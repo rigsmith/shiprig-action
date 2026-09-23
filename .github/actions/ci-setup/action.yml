@@ -36,10 +36,11 @@ runs:
         go-version: stable
         cache: false
 
+    # Installed at a fixed path the test step names itself
+    # (SHIPRIG_BIN: runner.temp/shiprig-bin/shiprig), rather than exported
+    # through GITHUB_ENV, which zizmor flags as an injection surface.
     - name: Install shiprig
       shell: bash
       env:
         SHIPRIG_REF: 68fbee63d7ac1ca5ed0f83dc3fafc7894cd0c25f
-      run: |
-        GOBIN="$RUNNER_TEMP/shiprig-bin" go install "github.com/rigsmith/rigsmith/cmd/shiprig@${SHIPRIG_REF}"
-        echo "SHIPRIG_BIN=$RUNNER_TEMP/shiprig-bin/shiprig" >> "$GITHUB_ENV"
+      run: GOBIN="$RUNNER_TEMP/shiprig-bin" go install "github.com/rigsmith/rigsmith/cmd/shiprig@${SHIPRIG_REF}"
