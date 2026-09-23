@@ -1,0 +1,23 @@
+package.json
+  s_505a2cfce9114c::t_e206b5047a7c86 44
+pnpm-workspace.yaml
+  s_505a2cfce9114c::t_e206b5047a7c86 26-32
+README.md
+  s_505a2cfce9114c::t_e206b5047a7c86 67,184
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "feb977f3d585fe4c50e82ce406bbcb2ce3865ee1",
+  "prompts": {},
+  "sessions": {
+    "s_505a2cfce9114c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26f83a80-3cb9-404d-829c-6b4925947f16",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "John Campion Jr <john@brightshore.io>"
+    }
+  }
+}
