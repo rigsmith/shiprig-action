@@ -23,7 +23,6 @@
     "@actions/core": "^3.0.1",
     "@actions/exec": "^3.0.0",
     "@actions/github": "^9.1.1",
-    "@changesets/get-release-plan": "^5.0.2",
     "@changesets/ghcommit": "^3.0.0",
     "@changesets/git": "^4.0.1",
     "@changesets/pre": "^3.0.0",

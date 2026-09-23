@@ -1,11 +1,7 @@
 import * as github from "@actions/github";
-import { getReleasePlan } from "@changesets/get-release-plan";
-import type {
-  ComprehensiveRelease,
-  ReleasePlan,
-  VersionType,
-} from "@changesets/types";
 import { markdownTable } from "markdown-table";
+import { type PlannedRelease, readReleasePlan } from "../shiprig.ts";
+import { pullRequestChangesets, previewChangelog } from "./preview.ts";
 import {
   getNewChangesetTemplateContent,
   getNewChangesetUrl,
@@ -18,31 +14,57 @@ type PullRequestContext = NonNullable<
 
 export async function getCommentMessage(context: PullRequestContext) {
   await using worktree = await getPullRequestWorktree(context);
+  return getStatusMessage(worktree.cwd, worktree.baseRef, {
+    sha: context.head.sha,
+    title: context.title,
+    headRepoUrl: context.head.repo.html_url,
+    headRef: context.head.ref,
+  });
+}
 
-  const releasePlan = await getReleasePlan(worktree.cwd, worktree.baseRef);
+/** The comment for a checkout of the pull request's head, compared to baseRef. */
+export async function getStatusMessage(
+  cwd: string,
+  baseRef: string,
+  pr: { sha: string; title: string; headRepoUrl: string; headRef: string },
+) {
+  const own = await pullRequestChangesets(cwd, baseRef);
   const templateContent = await getNewChangesetTemplateContent(
-    worktree.cwd,
-    worktree.baseRef,
-    context.title,
+    cwd,
+    baseRef,
+    pr.title,
   );
-
   const newChangesetUrl = getNewChangesetUrl(
-    context.head.repo.html_url,
-    context.head.ref,
+    pr.headRepoUrl,
+    pr.headRef,
     templateContent,
   );
 
-  if (releasePlan.changesets.length > 0) {
-    return getApproveMessage(context.head.sha, newChangesetUrl, releasePlan);
-  } else {
-    return getAbsentMessage(context.head.sha, newChangesetUrl, releasePlan);
+  // Without a changeset of its own there's no plan to read: `status --since`
+  // is the CI gate, and fails when packages changed with no changeset.
+  if (own.length === 0) {
+    return getAbsentMessage(pr.sha, newChangesetUrl);
   }
+
+  // The plan first: the preview then trims the checkout's changesets down to
+  // this pull request's own.
+  const releases = await readReleasePlan(cwd, { since: baseRef });
+  const preview = await previewChangelog(cwd, own);
+  return getApproveMessage(
+    pr.sha,
+    newChangesetUrl,
+    releases,
+    own.length,
+    preview,
+  );
 }
 
-function getApproveMessage(
+export function getApproveMessage(
   commitSha: string,
   newChangesetUrl: string,
-  releasePlan: ReleasePlan,
+  releases: PlannedRelease[],
+  changesets: number,
+  preview: string | undefined,
 ) {
   return `\
 ### 🦋 Changeset detected
@@ -51,18 +73,14 @@ Latest commit: ${commitSha}
 
 **The changes in this PR will be included in the next version bump.**
 
-${getReleasePlanMessage(releasePlan)}
-
+${getReleasePlanMessage(releases, changesets)}
+${getPreviewMessage(preview)}
 Not sure what this means? [Click here to learn what changesets are](https://changesets.dev/faq).
 
 [Click here if you're a maintainer who wants to add another changeset to this PR](${newChangesetUrl})`;
 }
 
-function getAbsentMessage(
-  commitSha: string,
-  newChangesetUrl: string,
-  releasePlan: ReleasePlan,
-) {
+export function getAbsentMessage(commitSha: string, newChangesetUrl: string) {
   return `\
 ### ⚠️ No Changeset found
 
@@ -70,38 +88,49 @@ Latest commit: ${commitSha}
 
 Merging this PR will not cause a version bump for any packages. If these changes should not result in a new version, you're good to go. **If these changes should result in a version bump, you need to add a changeset.**
 
-${getReleasePlanMessage(releasePlan)}
+${getReleasePlanMessage([], 0)}
 
 [Click here to learn what changesets are, and how to add one](https://changesets.dev/faq).
 
 [Click here if you're a maintainer who wants to add a changeset to this PR](${newChangesetUrl})`;
 }
 
-function getReleasePlanMessage(releasePlan: ReleasePlan) {
-  const publishableReleases = releasePlan.releases.filter(
-    (r) => r.type !== "none",
-  ) as (ComprehensiveRelease & { type: Exclude<VersionType, "none"> })[];
+function getPreviewMessage(preview: string | undefined): string {
+  if (!preview) return "";
+  return `\
+<details>
+<summary>Changelog preview</summary>
 
+What this PR's changesets add to the changelogs:
+
+${preview}
+
+</details>
+`;
+}
+
+function getReleasePlanMessage(releases: PlannedRelease[], changesets: number) {
+  const bumps = releases.filter((r) => r.type !== "none");
   const table = markdownTable([
-    ["Name", "Type"],
-    ...publishableReleases.map((release) => {
-      return [
-        release.name,
-        {
-          major: "Major",
-          minor: "Minor",
-          patch: "Patch",
-        }[release.type],
-      ];
-    }),
+    ["Name", "Type", "Version"],
+    ...bumps.map((r) => [
+      r.name,
+      (
+        { major: "Major", minor: "Minor", patch: "Patch" } as Record<
+          string,
+          string
+        >
+      )[r.type] ?? r.type,
+      r.newVersion,
+    ]),
   ]);
 
   let summary = "This PR includes ";
-  if (releasePlan.changesets.length === 0) {
+  if (changesets === 0) {
     summary += "no changesets";
   } else {
-    summary += `changesets to release ${publishableReleases.length} package`;
-    if (publishableReleases.length !== 1) {
+    summary += `changesets to release ${bumps.length} package`;
+    if (bumps.length !== 1) {
       summary += "s";
     }
   }
@@ -111,7 +140,7 @@ function getReleasePlanMessage(releasePlan: ReleasePlan) {
 <summary>${summary}</summary>
 
 ${
-  publishableReleases.length > 0
+  bumps.length > 0
     ? table
     : "When changesets are added to this PR, you'll see the packages that this PR includes changesets for and the associated semver types"
 }
