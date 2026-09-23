@@ -26,7 +26,7 @@ for (const readme of [
 ]) {
   const content = fs.readFileSync(readme, "utf8");
   const updated = content.replace(
-    /rigsmith\/shiprig-action((?:\/[a-z-]+)?)@v\d+(?:\.\d+)*(?![\w/+-]|\.\d)/g,
+    /rigsmith\/shiprig-action((?:\/[a-z-]+)?)@v\d+(?:\.\d+)*(?![\w/+=-]|\.\d)/g,
     `rigsmith/shiprig-action$1@${releaseLine}`,
   );
   if (updated !== content) fs.writeFileSync(readme, updated);
