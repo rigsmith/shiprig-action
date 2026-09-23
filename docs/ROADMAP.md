@@ -29,6 +29,13 @@ version-pr-merge`, the default, publishes on the push that merges
   behaviour. A tag the publish script already pushed is left alone instead of
   warning "Reference already exists", and a tag the action can't push fails the
   run.
+- **4b. A stale queued run leaves the version PR alone** (v0.3.1). Release
+  workflows queue their runs (`queue: max`, up to 100) and GitHub doesn't
+  guarantee the order they start in. Before touching
+  `changeset-release/<base>`, the action checks the base still points at the
+  run's commit; if it has moved on, the newer run owns the version PR. The
+  publish path is unaffected: a merge run publishes its own commit whenever it
+  runs.
 
 ## Next
 
@@ -84,19 +91,6 @@ no input yet.
 A PR opened with `GITHUB_TOKEN` gets its CI runs held for approval ("Approve
 workflows to run"). A GitHub App token avoids that, and stage 2 needs one
 anyway. Workflow-only; document it in the README's custom-token section.
-
-### 4b. Don't let a stale run rewrite the version PR
-
-Release workflows run with `queue: max`, so pushes to main queue rather than
-replace each other: up to 100 can wait, and GitHub cancels any beyond that. A
-burst that large could still drop a merge run; re-running it releases, since
-the release path is idempotent. Runs start first in, first out, but GitHub
-doesn't guarantee the order, so an older run could reach the version path
-after a newer one and reset `changeset-release/<base>` to its older commit,
-or reopen a version PR that was just merged. The action should skip the
-version-PR update when the base branch has moved past `github.sha` (a newer
-run owns that), while still taking the publish path, which is right for any
-commit.
 
 ## Later
 
