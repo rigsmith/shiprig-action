@@ -28,11 +28,10 @@ commits.
 
 ## Requirements
 
-- **Settings → Actions → General → "Allow GitHub Actions to create and approve
-  pull requests"** must be on, because the workflow opens the version PR with the
-  default `GITHUB_TOKEN`.
-- A version PR opened or updated with `GITHUB_TOKEN` gets its `pull_request`
-  workflow runs (CI) in an **approval-required** state: someone with write
-  access starts them with **Approve workflows to run** on the PR. Upstream uses
-  a GitHub App token, which avoids the approval step; the workflow can adopt one
-  later.
+- **The shipRig GitHub App**, installed on this repository, with its client ID
+  in the org variable `SHIPRIG_APP_CLIENT_ID` and its private key in the org
+  secret `SHIPRIG_APP_PRIVATE_KEY`. The action opens and updates the version PR
+  as the App (`shiprig[bot]`), so the PR's CI runs without **Approve workflows
+  to run**, which a PR opened with `GITHUB_TOKEN` would need.
+- The release script's git pushes (the release commit, the tag and the `vN`
+  branch) use the job's `GITHUB_TOKEN`, which has `contents: write`.
