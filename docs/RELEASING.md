@@ -29,13 +29,15 @@ commits.
 ## Requirements
 
 - **The shipRig GitHub App**, installed on this repository with the repository
-  permissions **Contents: read and write** and **Pull requests: read and
-  write** (the token step asks for both and fails if the installation lacks
-  either), its client ID in the org variable `SHIPRIG_APP_CLIENT_ID` and its
-  private key in the org secret `SHIPRIG_APP_PRIVATE_KEY`. The action opens and updates the version PR
+  permissions **Contents**, **Pull requests** and **Workflows**, all read and
+  write (each token step fails if the installation lacks what it asks for),
+  its client ID in the org variable `SHIPRIG_APP_CLIENT_ID` and its private
+  key in the org secret `SHIPRIG_APP_PRIVATE_KEY`. The action opens and updates the version PR
   as the App (`shiprig[bot]`), so the PR's CI runs without **Approve workflows
   to run**, which a PR opened with `GITHUB_TOKEN` would need.
-- The release script's git pushes (the release commit, the tag and the `vN`
-  branch) use the job's `GITHUB_TOKEN`, which has `contents: write`, passed as
-  `RELEASE_GIT_TOKEN`. The action hands the script the App token as
-  `GITHUB_TOKEN`, which it uses only to read the GitHub release.
+- The workflow mints two App tokens. The action's (Contents, Pull requests)
+  opens the version PR and creates the GitHub release. The release script's
+  git pushes (the release commit, the tag and the `vN` branch) use a second one
+  (Contents, Workflows), passed as `RELEASE_GIT_TOKEN`: moving `vN` across
+  commits that change `.github/workflows/` needs the Workflows permission,
+  which the job's `GITHUB_TOKEN` can't have. The job's own token is read-only.

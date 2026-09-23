@@ -13,16 +13,21 @@ import pkgJson from "../package.json" with { type: "json" };
 const tag = `v${pkgJson.version}`;
 const releaseLine = `v${pkgJson.version.split(".")[0]}`;
 const isPrerelease = pkgJson.version.includes("-");
-// GITHUB_TOKEN is the action's github-token (the shipRig App's): it reads the
-// GitHub release. The git pushes below use RELEASE_GIT_TOKEN, the job's own
-// GITHUB_TOKEN, as release.yml sets it: the App has no `workflows`
-// permission, and moving vN over commits that touch .github/workflows needs
-// the job token's push rights, not the App's.
+// GITHUB_TOKEN is the action's github-token: it only reads the GitHub release.
+// The git pushes below use RELEASE_GIT_TOKEN, a shipRig App token that can
+// also write workflow files (release.yml mints it): GitHub refuses to move vN
+// across commits that change .github/workflows without that permission, which
+// neither the action's token nor the job's GITHUB_TOKEN has.
 const githubToken = process.env.GITHUB_TOKEN;
 if (!githubToken) {
   throw new Error("GITHUB_TOKEN is required");
 }
-const gitToken = process.env.RELEASE_GIT_TOKEN || githubToken;
+const gitToken = process.env.RELEASE_GIT_TOKEN;
+if (!gitToken) {
+  throw new Error(
+    "RELEASE_GIT_TOKEN is required: a token that can push contents and workflow files",
+  );
+}
 const basic = Buffer.from(`x-access-token:${gitToken}`).toString("base64");
 const gitEnv = {
   ...process.env,
