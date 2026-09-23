@@ -29,27 +29,25 @@ version-pr-merge`, the default, publishes on the push that merges
   behaviour. A tag the publish script already pushed is left alone instead of
   warning "Reference already exists", and a tag the action can't push fails the
   run.
+- **4b. A stale queued run leaves the version PR alone** (v0.3.1). Release
+  workflows queue their runs (`queue: max`, up to 100) and GitHub doesn't
+  guarantee the order they start in. Before touching
+  `changeset-release/<base>`, the action checks the base still points at the
+  run's commit (and again just before pushing, since it can move during the
+  run); if it has moved on, the newer run owns the version PR. The publish path
+  is unaffected: a merge run with nothing left pending publishes its own commit
+  whenever it runs (a pending changeset sends it down the version path
+  instead).
+- **4. No approval step on the version PR's CI.** Both this repository and
+  rigsmith run the action as the shipRig GitHub App, so version PRs come from
+  `shiprig[bot]` and their CI starts on its own.
+- **1. Dogfood in rigsmith.** Stage 1 (version PR only, rigsmith#452) and
+  stage 2 (the shipRig App tags on the release PR's merge and the tag starts
+  GoReleaser, rigsmith#455, #461) are live; rigsmith 1.20.2 was the first
+  release cut end to end. rigsmith's old `.github/actions/release` remains as
+  its reusable action for other repos.
 
 ## Next
-
-### 1. Dogfood in rigsmith, in two stages
-
-**Stage 1: version PR only.** Run the action with no `publish-script`. It keeps
-the "Version Packages" PR up to date and never tags or publishes; merging it is
-followed by pushing the `vX.Y.Z` tag by hand, as today, and GoReleaser does
-the rest. A dry run on 2026-09-23 against rigsmith `main` with shiprig 1.20.0
-produced a clean patch PR (1.20.0 → 1.20.1: `go.mod`, `CHANGELOG.md`, one
-changeset removed).
-
-**Stage 2: the action pushes the tag.** A publish script runs `shiprig tag` and
-pushes. Two things to solve first:
-
-- a tag pushed with the default `GITHUB_TOKEN` doesn't trigger other workflows,
-  so `goreleaser.yml` would never run: this needs a GitHub App token;
-- GoReleaser creates the GitHub Release, so the action's own must be off
-  (`create-github-releases: false`).
-
-Then retire rigsmith's `.github/actions/release`.
 
 ### 2. A config file: `.shiprig.jsonc`
 
@@ -78,25 +76,6 @@ no input yet.
   configures the local `shiprig release` steps (version → commit → tag →
   push); `.shiprig.jsonc` configures the action. Neither reads the other's
   settings.
-
-### 4. No approval step on the version PR's CI
-
-A PR opened with `GITHUB_TOKEN` gets its CI runs held for approval ("Approve
-workflows to run"). A GitHub App token avoids that, and stage 2 needs one
-anyway. Workflow-only; document it in the README's custom-token section.
-
-### 4b. Don't let a stale run rewrite the version PR
-
-Release workflows run with `queue: max`, so pushes to main queue rather than
-replace each other: up to 100 can wait, and GitHub cancels any beyond that. A
-burst that large could still drop a merge run; re-running it releases, since
-the release path is idempotent. Runs start first in, first out, but GitHub
-doesn't guarantee the order, so an older run could reach the version path
-after a newer one and reset `changeset-release/<base>` to its older commit,
-or reopen a version PR that was just merged. The action should skip the
-version-PR update when the base branch has moved past `github.sha` (a newer
-run owns that), while still taking the publish path, which is right for any
-commit.
 
 ## Later
 

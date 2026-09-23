@@ -148,7 +148,9 @@ async function main() {
         branch: getOptionalInput("pr-base-branch"),
       });
 
-      core.setOutput("pr-number", String(pullRequestNumber));
+      if (pullRequestNumber !== undefined) {
+        core.setOutput("pr-number", String(pullRequestNumber));
+      }
 
       return;
     }

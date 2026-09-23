@@ -46,6 +46,9 @@ let mockedGithubMethods = {
   repos: {
     createRelease: vi.fn(),
   },
+  git: {
+    getRef: vi.fn(),
+  },
 };
 let mockedGraphql = vi.fn();
 
@@ -127,6 +130,14 @@ function resetGithubContext() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // The base branch still points at this run's commit unless a test says
+  // otherwise. Reset, not just cleared, so a response one test queued and
+  // didn't use can't reach the next.
+  mockedGithubMethods.git.getRef
+    .mockReset()
+    .mockImplementation(() =>
+      Promise.resolve({ data: { object: { sha: github.context.sha } } }),
+    );
   resetGithubContext();
 });
 
@@ -379,6 +390,115 @@ describe("version", () => {
     expect(vi.mocked(commitChangesSinceBase).mock.calls[0][0].message).toBe(
       title,
     );
+  });
+
+  it("leaves the version PR alone when the base has moved past the run's commit", async () => {
+    await using fixture = await createSimpleProjectFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    mockedGithubMethods.git.getRef.mockImplementationOnce(() =>
+      Promise.resolve({ data: { object: { sha: "a-newer-commit" } } }),
+    );
+    await writeChangesets(
+      [
+        {
+          releases: [
+            { name: "changesets-dev-simple-project-pkg-a", type: "minor" },
+          ],
+          summary: "Awesome feature",
+        },
+      ],
+      cwd,
+    );
+    const headBefore = (
+      await exec("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+        nodeOptions: { cwd },
+      })
+    ).stdout.trim();
+
+    const result = await runVersion({ github: createGithub(cwd), cwd });
+
+    expect(result).toEqual({});
+    expect(mockedGithubMethods.git.getRef).toHaveBeenCalledWith(
+      expect.objectContaining({ ref: "heads/some-branch" }),
+    );
+    expect(mockedGithubMethods.pulls.list).not.toHaveBeenCalled();
+    expect(mockedGithubMethods.pulls.create).not.toHaveBeenCalled();
+    expect(vi.mocked(commitChangesSinceBase)).not.toHaveBeenCalled();
+    // Not even switched to the version branch.
+    expect(
+      (
+        await exec("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+          nodeOptions: { cwd },
+        })
+      ).stdout.trim(),
+    ).toBe(headBefore);
+  });
+
+  it("leaves the version PR alone when the base moves on while it versions", async () => {
+    await using fixture = await createSimpleProjectFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({ data: [] }));
+    mockedGithubMethods.git.getRef
+      .mockImplementationOnce(() =>
+        Promise.resolve({ data: { object: { sha: github.context.sha } } }),
+      )
+      .mockImplementationOnce(() =>
+        Promise.resolve({ data: { object: { sha: "a-newer-commit" } } }),
+      );
+    await writeChangesets(
+      [
+        {
+          releases: [
+            { name: "changesets-dev-simple-project-pkg-a", type: "minor" },
+          ],
+          summary: "Awesome feature",
+        },
+      ],
+      cwd,
+    );
+
+    const result = await runVersion({ github: createGithub(cwd), cwd });
+
+    expect(result).toEqual({});
+    expect(mockedGithubMethods.git.getRef).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(commitChangesSinceBase)).not.toHaveBeenCalled();
+    expect(mockedGithubMethods.pulls.create).not.toHaveBeenCalled();
+  });
+
+  it("checks the branch the run is on, not a different pr-base-branch", async () => {
+    await using fixture = await createSimpleProjectFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({ data: [] }));
+    mockedGithubMethods.pulls.create.mockImplementationOnce(() => ({
+      data: { number: 123 },
+    }));
+    await writeChangesets(
+      [
+        {
+          releases: [
+            { name: "changesets-dev-simple-project-pkg-a", type: "minor" },
+          ],
+          summary: "Awesome feature",
+        },
+      ],
+      cwd,
+    );
+
+    // The run is on some-branch (the mocked context.ref); the PR targets main.
+    const result = await runVersion({
+      github: createGithub(cwd),
+      cwd,
+      branch: "main",
+    });
+
+    expect(result).toEqual({ pullRequestNumber: 123 });
+    expect(mockedGithubMethods.git.getRef).toHaveBeenCalledTimes(2);
+    for (const [args] of mockedGithubMethods.git.getRef.mock.calls) {
+      expect(args).toMatchObject({ ref: "heads/some-branch" });
+    }
   });
 
   it('creates a draft PR when prDraft is "create"', async () => {
@@ -848,6 +968,7 @@ describe("publishDecision", () => {
     });
     expect(d).toMatchObject({ publish: false });
     expect(d.reason).toContain("isn't the merge of the version PR");
+    expect(d.reason).toContain("if the workflow allows one");
   });
 
   it("always publishes a run started by hand", async () => {

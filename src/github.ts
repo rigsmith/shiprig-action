@@ -238,6 +238,17 @@ export class GitHub {
     }
   }
 
+  // The commit `base` points at now, when it isn't `sha`; undefined while it
+  // still is. A failure to read it throws: a run that can't tell whether it's
+  // stale shouldn't guess.
+  async baseMovedPast(base: string, sha: string): Promise<string | undefined> {
+    const { data } = await this.octokit.rest.git.getRef({
+      ...context.repo,
+      ref: `heads/${base}`,
+    });
+    return data.object.sha === sha ? undefined : data.object.sha;
+  }
+
   async #remoteTagExists(tag: string): Promise<boolean> {
     try {
       await this.octokit.rest.git.getRef({
