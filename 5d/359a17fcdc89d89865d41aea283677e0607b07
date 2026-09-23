@@ -1,0 +1,21 @@
+src/run.test.ts
+  s_505a2cfce9114c::t_3c73f4d63deef0 228-266
+src/run.ts
+  s_505a2cfce9114c::t_3c73f4d63deef0 163-167,204-207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "5d359a17fcdc89d89865d41aea283677e0607b07",
+  "prompts": {},
+  "sessions": {
+    "s_505a2cfce9114c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26f83a80-3cb9-404d-829c-6b4925947f16",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "John Campion Jr <john@brightshore.io>"
+    }
+  }
+}
