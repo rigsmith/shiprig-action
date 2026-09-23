@@ -1,0 +1,29 @@
+src/run.ts
+  s_505a2cfce9114c::t_a14e106544943c 340-341,358-371,610
+src/version/index.ts
+  s_505a2cfce9114c::t_a14e106544943c 50-52
+src/github.ts
+  s_505a2cfce9114c::t_a14e106544943c 241-251
+src/github.test.ts
+  s_505a2cfce9114c::t_a14e106544943c 337-367
+src/index.ts
+  s_505a2cfce9114c::t_a14e106544943c 151-153
+src/run.test.ts
+  s_505a2cfce9114c::t_a14e106544943c 49-55,391-433,901
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "bcf0ff70cfc035f71348922175ec02d326d3d6db",
+  "prompts": {},
+  "sessions": {
+    "s_505a2cfce9114c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26f83a80-3cb9-404d-829c-6b4925947f16",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "John Campion Jr <john@brightshore.io>"
+    }
+  }
+}
