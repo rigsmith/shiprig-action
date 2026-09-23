@@ -707,6 +707,18 @@ describe("releaseTitle", () => {
     ).toBe("chore: release @acme/cli@3.0.0, tool@1.2.0, ui@0.5.0");
   });
 
+  it("keeps full names where short names would collide", () => {
+    expect(
+      releaseTitle([
+        { name: "github.com/a/x/ui", version: "1.0.0" },
+        { name: "github.com/b/y/ui", version: "2.0.0" },
+        { name: "github.com/a/x", version: "3.0.0" },
+      ]),
+    ).toBe(
+      "chore: release github.com/a/x/ui@1.0.0, github.com/b/y/ui@2.0.0, x@3.0.0",
+    );
+  });
+
   it("counts more than three", () => {
     expect(
       releaseTitle(

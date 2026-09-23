@@ -99,6 +99,23 @@ export async function listPackages(cwd: string): Promise<ShiprigPackage[]> {
       { cause: err },
     );
   }
+  // Fail closed on a record the rest of the action can't use: a blank name or
+  // version would otherwise turn into a release title, a PR body heading or a
+  // tag lookup that quietly names nothing.
+  if (!Array.isArray(parsed?.packages)) {
+    throw new Error(
+      `\`shiprig packages list --json\` has no "packages" list:\n${output.stdout}`,
+    );
+  }
+  for (const p of parsed.packages) {
+    for (const field of ["name", "version", "ecosystem", "dir"] as const) {
+      if (typeof p?.[field] !== "string" || p[field] === "") {
+        throw new Error(
+          `\`shiprig packages list --json\` reported a package with no ${field}: ${JSON.stringify(p)}`,
+        );
+      }
+    }
+  }
   const root = await workspaceRoot(cwd);
   return parsed.packages.map((p) => ({
     ...p,

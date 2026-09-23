@@ -513,8 +513,18 @@ export function releaseTitle(
   if (packages.length > 3) {
     return `${base} ${packages.length} packages`;
   }
+  // A short name two packages share (github.com/a/x/ui, github.com/b/y/ui)
+  // would name neither, so those two keep their full names.
+  const shortCount = new Map<string, number>();
+  for (const p of packages) {
+    const short = shortPackageName(p.name);
+    shortCount.set(short, (shortCount.get(short) ?? 0) + 1);
+  }
   const named = packages
-    .map((p) => `${shortPackageName(p.name)}@${p.version}`)
+    .map((p) => {
+      const short = shortPackageName(p.name);
+      return `${shortCount.get(short) === 1 ? short : p.name}@${p.version}`;
+    })
     .sort();
   return `${base} ${named.join(", ")}`;
 }
