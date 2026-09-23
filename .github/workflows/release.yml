@@ -63,7 +63,7 @@ jobs:
         run: pnpm build
 
       - name: Version PR or release
-        uses: ./
+        uses: ./ # zizmor: ignore[self-repository] runs the dist/ built above; $/ loads the commit, which has none
         env:
           # The lockfile-pinned shiprig (devDependency), for the action itself;
           # the scripts find it on PATH through pnpm.
