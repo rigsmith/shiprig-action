@@ -182,7 +182,9 @@ The split flow (select-mode → pack → publish) is phase 4 in
    `version-script` (that's the default).
 
 The version branch name stays `changeset-release/<base>`, so changeset-bot and
-anything else that looks for it keep working.
+anything else that looks for it keep working. The default PR title and commit
+message change: `chore: release 1.2.0` rather than `Version Packages`. Set
+`pr-title` and `commit-message` to keep the old ones.
 
 ## API
 
@@ -193,8 +195,8 @@ anything else that looks for it keep working.
 | `github-token`           | The GitHub token to use for authentication. Defaults to the GitHub-provided token. To use a custom token, pass it explicitly to this input.                                                                                                                                           |
 | `publish-script`         | The command to use to build and publish packages, e.g. `shiprig publish --yes`. The action sets CHANGESETS_OUTPUT to a file; `shiprig publish` (or `shiprig tag`) writes an event there for each tag it creates, and the action reads them back to push the tags and create releases. |
 | `version-script`         | The command to update versions, edit CHANGELOGs, and consume changesets. Defaults to `shiprig version --yes`                                                                                                                                                                          |
-| `commit-message`         | The commit message. Default to `Version Packages`                                                                                                                                                                                                                                     |
-| `pr-title`               | The pull request title. Default to `Version Packages`                                                                                                                                                                                                                                 |
+| `commit-message`         | The commit message. Defaults to the pull request's default title.                                                                                                                                                                                                                     |
+| `pr-title`               | The pull request title. Defaults to `chore: release` plus what it releases: `chore: release 1.2.0` when everything shares one version, `chore: release core@1.2.0, ui@0.5.0` for up to three packages, `chore: release 5 packages` beyond that.                                       |
 | `pr-draft`               | Controls draft PR behavior. Use 'create' to create new version PRs as draft, or 'always' to also convert existing version PRs back to draft when updating them.                                                                                                                       |
 | `pr-base-branch`         | Sets the base branch of the PR. Defaults to `github.ref_name`.                                                                                                                                                                                                                        |
 | `create-github-releases` | Whether to create GitHub releases after publish                                                                                                                                                                                                                                       |
