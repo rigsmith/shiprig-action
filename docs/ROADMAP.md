@@ -36,6 +36,9 @@ version-pr-merge`, the default, publishes on the push that merges
   run's commit; if it has moved on, the newer run owns the version PR. The
   publish path is unaffected: a merge run publishes its own commit whenever it
   runs.
+- **4. No approval step on the version PR's CI.** Both this repository and
+  rigsmith run the action as the shipRig GitHub App, so version PRs come from
+  `shiprig[bot]` and their CI starts on its own.
 
 ## Next
 
@@ -85,12 +88,6 @@ no input yet.
   configures the local `shiprig release` steps (version → commit → tag →
   push); `.shiprig.jsonc` configures the action. Neither reads the other's
   settings.
-
-### 4. No approval step on the version PR's CI
-
-A PR opened with `GITHUB_TOKEN` gets its CI runs held for approval ("Approve
-workflows to run"). A GitHub App token avoids that, and stage 2 needs one
-anyway. Workflow-only; document it in the README's custom-token section.
 
 ## Later
 
