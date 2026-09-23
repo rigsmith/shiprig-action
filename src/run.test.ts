@@ -47,11 +47,7 @@ let mockedGithubMethods = {
     createRelease: vi.fn(),
   },
   git: {
-    // The base branch still points at this run's commit unless a test says
-    // otherwise.
-    getRef: vi.fn(() =>
-      Promise.resolve({ data: { object: { sha: github.context.sha } } }),
-    ),
+    getRef: vi.fn(),
   },
 };
 let mockedGraphql = vi.fn();
@@ -134,6 +130,14 @@ function resetGithubContext() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // The base branch still points at this run's commit unless a test says
+  // otherwise. Reset, not just cleared, so a response one test queued and
+  // didn't use can't reach the next.
+  mockedGithubMethods.git.getRef
+    .mockReset()
+    .mockImplementation(() =>
+      Promise.resolve({ data: { object: { sha: github.context.sha } } }),
+    );
   resetGithubContext();
 });
 
