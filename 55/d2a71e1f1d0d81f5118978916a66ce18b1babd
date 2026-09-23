@@ -1,0 +1,25 @@
+action.yml
+  s_df06cc81ca93a0::t_d92aa8c5ca316b 35
+src/shiprig.test.ts
+  s_df06cc81ca93a0::t_d92aa8c5ca316b 134,158-173
+src/shiprig.ts
+  s_df06cc81ca93a0::t_d92aa8c5ca316b 175-180,183-191,194,233
+README.md
+  s_df06cc81ca93a0::t_d92aa8c5ca316b 77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "55d2a71e1f1d0d81f5118978916a66ce18b1babd",
+  "prompts": {},
+  "sessions": {
+    "s_df06cc81ca93a0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea084e0d-e516-4120-9276-01a2c9e861f3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "John Campion Jr <john@brightshore.io>"
+    }
+  }
+}
