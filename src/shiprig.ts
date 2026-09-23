@@ -172,16 +172,26 @@ export async function readReleasePlan(cwd: string): Promise<PlannedRelease[]> {
 }
 
 /**
- * Whether any changeset file is waiting at the top of .changeset/ (README.md
- * aside), even one that releases nothing: upstream's "has-changesets" output
- * and its "all changesets are empty" case both count files, not releases.
+ * Whether any changeset file is waiting (README.md aside), even one that
+ * releases nothing: upstream's "has-changesets" output and its "all
+ * changesets are empty" case both count files, not releases. That's the top of
+ * .changeset/, plus .changeset/pre/ once `pre exit` has run: those are the
+ * changesets the stable release graduates (upstream counts them in exit mode
+ * and leaves them out in pre mode, where they're already released).
  */
 export async function hasChangesetFiles(cwd: string): Promise<boolean> {
+  const dir = path.join(await workspaceRoot(cwd), ".changeset");
+  if (await hasMarkdown(dir)) return true;
+  return (
+    (await readPreState(cwd))?.mode === "exit" &&
+    (await hasMarkdown(path.join(dir, "pre")))
+  );
+}
+
+async function hasMarkdown(dir: string): Promise<boolean> {
   let entries: string[];
   try {
-    entries = await fs.readdir(
-      path.join(await workspaceRoot(cwd), ".changeset"),
-    );
+    entries = await fs.readdir(dir);
   } catch {
     return false;
   }
@@ -220,7 +230,7 @@ export async function readPreState(
     (pre.mode !== "pre" && pre.mode !== "exit") ||
     !("tag" in pre) ||
     typeof pre.tag !== "string" ||
-    pre.tag === ""
+    pre.tag.trim() === ""
   ) {
     throw new Error(
       `${file} is not a valid prerelease state: expected { "mode": "pre" | "exit", "tag": "<tag>" }`,

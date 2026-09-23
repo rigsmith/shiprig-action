@@ -131,6 +131,7 @@ describe("readPreState fails closed", () => {
     ["pre mode without a tag", JSON.stringify({ mode: "pre" })],
     ["a non-string tag", JSON.stringify({ mode: "pre", tag: 1 })],
     ["an unknown mode", JSON.stringify({ mode: "draft", tag: "next" })],
+    ["a whitespace-only tag", JSON.stringify({ mode: "pre", tag: " " })],
   ])("throws on %s", async (_, content) => {
     await using fixture = await workspace({ ".changeset/pre.json": content });
     await expect(readPreState(fixture.path)).rejects.toThrow(/pre\.json/);
@@ -152,5 +153,23 @@ describe("readPreState fails closed", () => {
       mode: "exit",
       tag: "rc",
     });
+  });
+});
+
+describe("hasChangesetFiles and prerelease", () => {
+  it("counts the changesets waiting in pre/ once pre exit has run", async () => {
+    await using fixture = await workspace({
+      ".changeset/pre.json": JSON.stringify({ mode: "exit", tag: "next" }),
+      ".changeset/pre/feature.md": '---\n"pkg-a": minor\n---\n\nA feature\n',
+    });
+    expect(await hasChangesetFiles(fixture.path)).toBe(true);
+  });
+
+  it("doesn't count them in pre mode, where they're already released", async () => {
+    await using fixture = await workspace({
+      ".changeset/pre.json": JSON.stringify({ mode: "pre", tag: "next" }),
+      ".changeset/pre/feature.md": '---\n"pkg-a": minor\n---\n\nA feature\n',
+    });
+    expect(await hasChangesetFiles(fixture.path)).toBe(false);
   });
 });
