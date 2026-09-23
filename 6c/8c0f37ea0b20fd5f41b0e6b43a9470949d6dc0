@@ -1,0 +1,23 @@
+docs/DESIGN.md
+  s_505a2cfce9114c::t_de603ada3e3894 89-95
+docs/ROADMAP.md
+  s_505a2cfce9114c::t_78691f5755559c 1-68,73,75-123,136-143,157-165
+  s_505a2cfce9114c::t_ccfc9d4901a1e6 69-72,74
+  s_505a2cfce9114c::t_d24ad46fb3b493 124-135,144-156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "6c8c0f37ea0b20fd5f41b0e6b43a9470949d6dc0",
+  "prompts": {},
+  "sessions": {
+    "s_505a2cfce9114c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26f83a80-3cb9-404d-829c-6b4925947f16",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "John Campion Jr <john@brightshore.io>"
+    }
+  }
+}
