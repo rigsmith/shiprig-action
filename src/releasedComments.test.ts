@@ -310,6 +310,12 @@ describe("namesPackage", () => {
     // a scope line isn't a package key
     ['type: fix\nscope: widgets\n"github.com/acme/tool"', "widgets", false],
     ['  "widgets": minor', "widgets", true],
+    // metadata lines aren't package entries, even for packages named so
+    ['type: fix\nscope: cli\n"widgets"', "type", false],
+    ['type: fix\nscope: cli\n"widgets"', "scope", false],
+    ['"type": minor', "type", true],
+    ['"scope": patch', "scope", true],
+    ["widgets:", "widgets", true],
   ])("%j names %s: %s", (frontmatter, name, want) => {
     expect(namesPackage(cs(frontmatter), name)).toBe(want);
   });

@@ -161,15 +161,22 @@ export function commentBody(
 }
 
 /**
- * Whether a changeset's frontmatter names the package, as a key: canon's
- * `"pkg": minor`, shiprig's `"pkg"` line, or a bare `pkg: minor`. Only a name
- * at the start of a line counts, so shiprig's `scope: pkg` names nothing.
+ * Whether a changeset's frontmatter names the package, as a package entry:
+ * a quoted name at the start of a line (canon's `"pkg": minor`, shiprig's
+ * `"pkg"`), or a bare `pkg: minor` whose value is a bump level. Metadata
+ * lines like shiprig's `type: fix` and `scope: cli` are bare keys with
+ * other values, so they never name a package, even one called `type`.
  */
 export function namesPackage(changeset: string, name: string): boolean {
   const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(changeset);
   if (!match) return false;
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`^\\s*(["']?)${escaped}\\1\\s*(:|$)`, "m").test(match[1]);
+  const quoted = new RegExp(`^\\s*(["'])${escaped}\\1\\s*(:.*)?$`, "m");
+  const bare = new RegExp(
+    `^\\s*${escaped}\\s*:\\s*(major|minor|patch|none)?\\s*$`,
+    "m",
+  );
+  return quoted.test(match[1]) || bare.test(match[1]);
 }
 
 // Whether any comment on the pull request carries the marker, on any page: a
