@@ -1,0 +1,9 @@
+docs/ROADMAP.md
+  ai_agent 42-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "2ae92434fe501a9b91ae19e7a2dea37e071c32e7",
+  "prompts": {}
+}
