@@ -1,6 +1,6 @@
 # shiprig-action roadmap
 
-Where shiprig-action goes after v0.1.0, measured against the two tools it sits
+Where shiprig-action goes next, measured against the two tools it sits
 between: the official `changesets/action` (its upstream) and Google's
 `release-please`. Features that change release decisions belong in shiprig (see
 [DESIGN.md](DESIGN.md#principles)); the action stays thin.
@@ -65,7 +65,7 @@ Nothing in progress; the next pick comes from Later.
 ### 5. Non-interactive version override (D)
 
 shiprig's override prompt can't be answered in CI. Add a non-interactive form:
-a `Release-As`-style setting in `.shiprig.jsonc`, a flag, or a field in a
+a `Release-As`-style setting in `shiprig-action.jsonc`, a flag, or a field in a
 changeset. Opt-in, so default behaviour keeps matching canon.
 
 ### 6. A version PR per package (E)
@@ -120,7 +120,7 @@ stand.
 | 8   | Pre-1.0 behaviour                           | `bump-minor-pre-major`                     | A major on 0.x goes to 1.0.0               | **Open**, upstream first                                                           |
 | 9   | Separate or grouped release PRs             | `separate-pull-requests`                   | One PR for everything                      | **Open**: item 6                                                                   |
 | 10  | A fallback when authors forget              | Every conventional commit counts           | The bot only comments                      | Partial: `versioning.source: both`                                                 |
-| 11  | Config in one file                          | `release-please-config.json`               | Workflow inputs                            | **Open**: item 2                                                                   |
+| 11  | Config in one file                          | `release-please-config.json`               | Workflow inputs                            | **Covered**: `shiprig-action.jsonc` (v0.4.0)                                       |
 
 ### Where changesets/action is already ahead: don't copy
 

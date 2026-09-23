@@ -23,7 +23,7 @@ shiprig-action releases itself, with itself (`.github/workflows/release.yml`).
    release line isn't moved.
 
 Users reference the action as `rigsmith/shiprig-action@v0` (the release line
-branch) or `@v0.1.0` (a tag), never `@main`: `dist/` exists only in release
+branch) or a release tag (`@vX.Y.Z`), never `@main`: `dist/` exists only in release
 commits.
 
 ## Requirements

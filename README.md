@@ -169,9 +169,30 @@ with:
 ```
 
 Setting a `GITHUB_TOKEN` environment variable does not configure the action.
-A version PR opened with the default token gets its `pull_request` checks in an
-approval-required state (start them with **Approve workflows to run**); with a
-token from a GitHub App or a personal account they run straight away.
+
+A GitHub App token is worth it for two reasons the default token can't cover:
+
+- **The version PR's CI starts on its own.** A PR opened with the default token
+  gets its `pull_request` checks in an approval-required state (start them with
+  **Approve workflows to run**).
+- **Pushed tags start other workflows.** A tag the action pushes with the
+  default token doesn't trigger anything, so a tag-driven release workflow (a
+  GoReleaser build, say) would never run.
+
+```yaml
+- id: app-token
+  uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+  with:
+    client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+    private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+    permission-contents: write # the version branch, tags, GitHub releases
+    permission-pull-requests: write # the version PR
+- uses: rigsmith/shiprig-action@v0
+  with:
+    github-token: ${{ steps.app-token.outputs.token }}
+```
+
+The App needs Contents and Pull requests (read and write) on the repository.
 
 ## Installing shiprig
 
@@ -188,7 +209,7 @@ runs the shiprig it was tested with.
 
   ```yaml
   - run: |
-      curl -fsSL https://rigsmith.sh | RIGSMITH_VERSION=v1.20.0 sh -s shiprig
+      curl -fsSL https://rigsmith.sh | RIGSMITH_VERSION=v1.20.3 sh -s shiprig
       echo "$HOME/.local/bin" >> "$GITHUB_PATH"
   ```
 
