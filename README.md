@@ -102,7 +102,9 @@ out in, linked to their releases:
 The pull requests come from the changesets the version PR's merge consumed, so
 in a monorepo a pull request is credited only for the packages its changeset
 named. Re-runs don't comment twice, and a comment that fails only warns: the
-release has already gone out. It needs Pull requests (write) on the token, as
+release has already gone out. The comments come from the version PR's merge
+commit, so they're posted by the run for that merge (or a re-run of it); a
+run started by hand on a later commit publishes without commenting. It needs Pull requests (write) on the token, as
 the workflow above has. Turn it off with `comment-released-prs: false` (or
 `commentReleasedPrs` in `shiprig-action.jsonc`).
 

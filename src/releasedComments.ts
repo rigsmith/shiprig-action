@@ -13,7 +13,13 @@ export type ReleasedPackage = { name: string; version: string; tag: string };
 export type CommentOctokit = {
   rest: {
     repos: {
-      getCommit(p: { owner: string; repo: string; ref: string }): Promise<{
+      getCommit(p: {
+        owner: string;
+        repo: string;
+        ref: string;
+        per_page: number;
+        page: number;
+      }): Promise<{
         data: {
           parents: { sha: string }[];
           files?: { filename: string; status?: string }[];
@@ -31,6 +37,7 @@ export type CommentOctokit = {
         path: string;
         sha: string;
         per_page: number;
+        page: number;
       }): Promise<{ data: { sha: string }[] }>;
       listPullRequestsAssociatedWithCommit(p: {
         owner: string;
@@ -76,12 +83,22 @@ export async function commentReleasedPrs({
 }): Promise<number[]> {
   const repo = context.repo;
   try {
-    const { data: commit } = await octokit.rest.repos.getCommit({
-      ...repo,
-      ref: sha,
-    });
-    const parent = commit.parents[0]?.sha;
-    const consumed = (commit.files ?? []).filter(
+    // The commit's files come a page at a time; a release in a big monorepo
+    // can remove more changesets than fit on one.
+    let parent: string | undefined;
+    const files: { filename: string; status?: string }[] = [];
+    for (let page = 1; ; page++) {
+      const { data } = await octokit.rest.repos.getCommit({
+        ...repo,
+        ref: sha,
+        per_page: 100,
+        page,
+      });
+      parent ??= data.parents[0]?.sha;
+      files.push(...(data.files ?? []));
+      if ((data.files ?? []).length < 100) break;
+    }
+    const consumed = files.filter(
       (f) =>
         f.status === "removed" &&
         CHANGESET.test(f.filename) &&
@@ -97,14 +114,21 @@ export async function commentReleasedPrs({
     // pull request -> the released packages its changesets named
     const credited = new Map<number, Set<ReleasedPackage>>();
     for (const file of consumed) {
-      const text = await readAt(octokit, file.filename, parent);
-      const named = released.filter((r) => namesPackage(text, r.name));
-      if (named.length === 0) continue;
-      const pr = await pullRequestThatAdded(octokit, file.filename, parent);
-      if (pr === undefined) continue;
-      const set = credited.get(pr) ?? new Set();
-      for (const r of named) set.add(r);
-      credited.set(pr, set);
+      // One changeset that can't be traced costs only its own attribution.
+      try {
+        const text = await readAt(octokit, file.filename, parent);
+        const named = released.filter((r) => namesPackage(text, r.name));
+        if (named.length === 0) continue;
+        const pr = await pullRequestThatAdded(octokit, file.filename, parent);
+        if (pr === undefined) continue;
+        const set = credited.get(pr) ?? new Set();
+        for (const r of named) set.add(r);
+        credited.set(pr, set);
+      } catch (err) {
+        core.warning(
+          `Couldn't find the pull request that added ${file.filename}: ${(err as Error).message}`,
+        );
+      }
     }
 
     const marker = `<!-- shiprig-action:released ${sha} -->`;
@@ -163,20 +187,22 @@ export function commentBody(
 /**
  * Whether a changeset's frontmatter names the package, as a package entry:
  * a quoted name at the start of a line (canon's `"pkg": minor`, shiprig's
- * `"pkg"`), or a bare `pkg: minor` whose value is a bump level. Metadata
- * lines like shiprig's `type: fix` and `scope: cli` are bare keys with
- * other values, so they never name a package, even one called `type`.
+ * `"pkg"`), or a bare `pkg: minor` whose value is a bump level. shiprig reads
+ * bare `type:` and `scope:` as metadata whatever their value, so those two
+ * never name a package unless quoted.
  */
 export function namesPackage(changeset: string, name: string): boolean {
   const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(changeset);
   if (!match) return false;
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const quoted = new RegExp(`^\\s*(["'])${escaped}\\1\\s*(:.*)?$`, "m");
+  if (quoted.test(match[1])) return true;
+  if (name === "type" || name === "scope") return false;
   const bare = new RegExp(
     `^\\s*${escaped}\\s*:\\s*(major|minor|patch|none)?\\s*$`,
     "m",
   );
-  return quoted.test(match[1]) || bare.test(match[1]);
+  return bare.test(match[1]);
 }
 
 // Whether any comment on the pull request carries the marker, on any page: a
@@ -219,13 +245,19 @@ async function pullRequestThatAdded(
   path: string,
   ref: string,
 ): Promise<number | undefined> {
-  const { data: commits } = await octokit.rest.repos.listCommits({
-    ...context.repo,
-    path,
-    sha: ref,
-    per_page: 100,
-  });
-  const adding = commits.at(-1)?.sha;
+  // Newest first, a page at a time: the adding commit is the last one of all.
+  let adding: string | undefined;
+  for (let page = 1; ; page++) {
+    const { data: commits } = await octokit.rest.repos.listCommits({
+      ...context.repo,
+      path,
+      sha: ref,
+      per_page: 100,
+      page,
+    });
+    adding = commits.at(-1)?.sha ?? adding;
+    if (commits.length < 100) break;
+  }
   if (!adding) return undefined;
   const { data: pulls } =
     await octokit.rest.repos.listPullRequestsAssociatedWithCommit({

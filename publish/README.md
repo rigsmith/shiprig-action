@@ -9,6 +9,8 @@ Publishing from a pack directory isn't supported yet: shiprig has no `publish --
 - Needs repo checked out and **shiprig ≥ 1.20.0** on `PATH` (or at `$SHIPRIG_BIN`)
 - [Job permissions][job-permissions]:
   - `contents: write`: to push the git tags and create GitHub releases
+  - `pull-requests: write`: to comment "released in" on the pull requests
+    whose changesets shipped (or set `comment-released-prs: false`)
   - `id-token: write`: if using [trusted publishing](https://docs.npmjs.com/trusted-publishers), which npm only accepts from GitHub-hosted runners
 - [Workflow triggers][workflow-triggers]: _any_
 

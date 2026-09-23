@@ -31,18 +31,25 @@ function fakeGitHub(opts: {
   addedBy: Record<string, number>; // changeset path -> pull request
   existingComments?: Record<number, string[]>;
   failComment?: number;
+  otherFiles?: number; // unrelated files in the commit, before the changesets
+  edits?: Record<string, number>; // commits editing a changeset after it was added
+  failLookup?: string; // a changeset whose history can't be read
 }) {
+  const files = [
+    ...Array.from({ length: opts.otherFiles ?? 0 }, (_, i) => ({
+      filename: `packages/p${i}/CHANGELOG.md`,
+      status: "modified",
+    })),
+    ...opts.removed.map((filename) => ({ filename, status: "removed" })),
+  ];
   const created: { pr: number; body: string }[] = [];
   const octokit: CommentOctokit = {
     rest: {
       repos: {
-        getCommit: async () => ({
+        getCommit: async ({ per_page, page }) => ({
           data: {
             parents: [{ sha: "parent" }],
-            files: opts.removed.map((filename) => ({
-              filename,
-              status: "removed",
-            })),
+            files: files.slice((page - 1) * per_page, page * per_page),
           },
         }),
         getContent: async ({ path }) => ({
@@ -52,10 +59,17 @@ function fakeGitHub(opts: {
             ),
           },
         }),
-        listCommits: async ({ path }) => ({
+        listCommits: async ({ path, per_page, page }) => {
+          if (path === opts.failLookup) throw new Error("Server Error");
           // newest first; the last is the commit that added the file
-          data: [{ sha: `edit-of-${path}` }, { sha: `add-of-${path}` }],
-        }),
+          const all = [
+            ...Array.from({ length: opts.edits?.[path] ?? 1 }, (_, i) => ({
+              sha: `edit-${i}-of-${path}`,
+            })),
+            { sha: `add-of-${path}` },
+          ];
+          return { data: all.slice((page - 1) * per_page, page * per_page) };
+        },
         listPullRequestsAssociatedWithCommit: async ({ commit_sha }) => {
           const path = commit_sha.replace(/^add-of-/, "");
           const pr = opts.addedBy[path];
@@ -163,6 +177,61 @@ describe("commentReleasedPrs", () => {
     expect(created).toHaveLength(1);
     expect(created[0].body).toContain("pkg-a@1.0.1");
     expect(created[0].body).toContain("pkg-b@1.0.1");
+  });
+
+  it("finds consumed changesets past the first page of the commit's files", async () => {
+    const { octokit, created } = fakeGitHub({
+      removed: [".changeset/a.md"],
+      changesets: { ".changeset/a.md": cs('"widgets": patch') },
+      addedBy: { ".changeset/a.md": 42 },
+      otherFiles: 250,
+    });
+    await commentReleasedPrs({
+      octokit,
+      sha: "s",
+      released: [{ name: "widgets", version: "1.0.1", tag: "v1.0.1" }],
+      serverUrl: SERVER,
+    });
+    expect(created.map((c) => c.pr)).toEqual([42]);
+  });
+
+  it("finds the adding commit of a changeset edited more than a page of times", async () => {
+    const { octokit, created } = fakeGitHub({
+      removed: [".changeset/a.md"],
+      changesets: { ".changeset/a.md": cs('"widgets": patch') },
+      addedBy: { ".changeset/a.md": 42 },
+      edits: { ".changeset/a.md": 150 },
+    });
+    await commentReleasedPrs({
+      octokit,
+      sha: "s",
+      released: [{ name: "widgets", version: "1.0.1", tag: "v1.0.1" }],
+      serverUrl: SERVER,
+    });
+    expect(created.map((c) => c.pr)).toEqual([42]);
+  });
+
+  it("still comments for the other changesets when one can't be traced", async () => {
+    const { octokit, created } = fakeGitHub({
+      removed: [".changeset/a.md", ".changeset/b.md"],
+      changesets: {
+        ".changeset/a.md": cs('"widgets": patch'),
+        ".changeset/b.md": cs('"widgets": patch'),
+      },
+      addedBy: { ".changeset/a.md": 1, ".changeset/b.md": 2 },
+      failLookup: ".changeset/a.md",
+    });
+    const commented = await commentReleasedPrs({
+      octokit,
+      sha: "s",
+      released: [{ name: "widgets", version: "1.0.1", tag: "v1.0.1" }],
+      serverUrl: SERVER,
+    });
+    expect(commented).toEqual([2]);
+    expect(created.map((c) => c.pr)).toEqual([2]);
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining("added .changeset/a.md"),
+    );
   });
 
   it("doesn't comment twice on a re-run", async () => {
@@ -316,6 +385,9 @@ describe("namesPackage", () => {
     ['"type": minor', "type", true],
     ['"scope": patch', "scope", true],
     ["widgets:", "widgets", true],
+    // shiprig's metadata keys, even with a bump word for a value
+    ["scope: patch", "scope", false],
+    ["type: minor", "type", false],
   ])("%j names %s: %s", (frontmatter, name, want) => {
     expect(namesPackage(cs(frontmatter), name)).toBe(want);
   });
