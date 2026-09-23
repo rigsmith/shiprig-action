@@ -1,5 +1,6 @@
-name: Changesets
-description: A GitHub action to automate releases with Changesets
+name: shiprig release
+description: Automate releases with shiprig across every ecosystem it supports, from changesets or conventional commits
+
 runs:
   using: "node24"
   main: "dist/index.js"
@@ -11,10 +12,10 @@ inputs:
     required: false
     default: ${{ github.token }}
   publish-script:
-    description: "The command to use to build and publish packages"
+    description: "The command to use to build and publish packages, e.g. `shiprig publish --yes`. Its tags are reported through CHANGESETS_OUTPUT, which shiprig reads."
     required: false
   version-script:
-    description: "The command to update version, edit CHANGELOG, read and delete changesets. Default to `changeset version` if not provided"
+    description: "The command to update versions, edit CHANGELOGs, and consume changesets. Defaults to `shiprig version --yes`"
     required: false
   commit-message:
     description: "The commit message. Default to `Version Packages`"
@@ -48,7 +49,7 @@ inputs:
     required: false
     default: false
   cwd:
-    description: "The working directory to execute Changesets in. Defaults to the root of the repository."
+    description: "The working directory to run shiprig in. Defaults to the root of the repository."
     required: false
 outputs:
   published:

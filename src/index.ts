@@ -1,13 +1,12 @@
 import * as core from "@actions/core";
 import { GitHub } from "./github.ts";
-import readChangesetState from "./readChangesetState.ts";
 import { runPublish, runVersion } from "./run.ts";
+import { hasChangesetFiles, readReleasePlan } from "./shiprig.ts";
 import {
   getOptionalInput,
   getRequiredInput,
   throwOnRemovedCommitModeInput,
   throwOnRenamedInputs,
-  validateChangesetsCliVersion,
 } from "./utils.ts";
 
 try {
@@ -18,7 +17,6 @@ try {
 
 async function main() {
   const cwd = getOptionalInput("cwd") || process.cwd();
-  await validateChangesetsCliVersion(cwd);
 
   throwOnRenamedInputs({
     publish: "publish-script",
@@ -52,13 +50,16 @@ async function main() {
     pushWithGitCli,
   });
 
-  let { changesets } = await readChangesetState(cwd);
+  // shiprig's plan is the answer to "is a release pending?": it covers
+  // changesets and conventional commits alike, ignored and private packages,
+  // and a prerelease waiting to graduate. Files are still counted, as upstream
+  // counts them, for the has-changesets output and the "nothing to release"
+  // case (changesets that are empty or name only ignored packages).
+  const releases = await readReleasePlan(cwd);
+  const hasPendingReleases = releases.length > 0;
+  let hasChangesets = hasPendingReleases || (await hasChangesetFiles(cwd));
 
   let publishScript = core.getInput("publish-script");
-  let hasChangesets = changesets.length !== 0;
-  const hasNonEmptyChangesets = changesets.some(
-    (changeset) => changeset.releases.length > 0,
-  );
   let hasPublishScript = !!publishScript;
 
   core.setOutput("published", "false");
@@ -73,7 +74,7 @@ async function main() {
       return;
     case !hasChangesets && hasPublishScript: {
       core.info(
-        "No changesets found. Attempting to publish any unpublished packages to npm",
+        "No changesets found. Attempting to publish any unpublished packages",
       );
 
       const createGithubReleases = core.getBooleanInput(
@@ -116,8 +117,10 @@ async function main() {
       }
       return;
     }
-    case hasChangesets && !hasNonEmptyChangesets:
-      core.info("All changesets are empty. Not creating PR");
+    case hasChangesets && !hasPendingReleases:
+      core.info(
+        "Changesets are present but nothing would release (they are empty, or name only ignored packages). Not creating PR",
+      );
       return;
     case hasChangesets: {
       const { pullRequestNumber } = await runVersion({

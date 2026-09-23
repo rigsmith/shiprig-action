@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import path from "node:path";
 import * as core from "@actions/core";
 import * as github from "@actions/github";
@@ -151,12 +152,12 @@ describe("publish", () => {
   });
 
   it("throws when the built-in publish command does not create the output file", async () => {
+    // A stand-in shiprig that publishes nothing and writes no tag events:
+    // the real one would reach the npm registry from a test.
     await using fixture = await gitdir({
-      "node_modules/@changesets/cli/package.json": JSON.stringify({
-        name: "@changesets/cli",
-        type: "module",
-      }),
-      "node_modules/@changesets/cli/bin.js": "",
+      "fake-shiprig":
+        '#!/bin/sh\ncase "$1" in packages) echo \'{"packages":[]}\' ;; esac\nexit 0\n',
+      ".changeset/config.json": JSON.stringify({}),
       "package.json": JSON.stringify({
         name: "simple-project",
         version: "1.0.0",
@@ -164,8 +165,10 @@ describe("publish", () => {
       "package-lock.json": "",
     });
     const cwd = fixture.path;
+    await fs.chmod(path.join(cwd, "fake-shiprig"), 0o755);
     await updateGithubContext(cwd);
     vi.stubEnv("RUNNER_TEMP", cwd);
+    vi.stubEnv("SHIPRIG_BIN", path.join(cwd, "fake-shiprig"));
 
     await expect(
       runPublish({
@@ -500,5 +503,102 @@ fluminis divesque vulnere aquis parce lapsis rabie si visa fulmineis.
     });
 
     expect(mockedGraphql.mock.calls[0]).toMatchSnapshot();
+  });
+});
+
+// The point of shiprig-action: one version PR and one set of releases across
+// every ecosystem shiprig discovers, not just npm.
+function createPolyglotFixture() {
+  return gitdir({
+    ".changeset/config.json": JSON.stringify({}),
+    "package.json": JSON.stringify({
+      name: "polyglot",
+      private: true,
+      workspaces: ["packages/*"],
+    }),
+    "package-lock.json": "",
+    "packages/pkg-a/package.json": JSON.stringify({
+      name: "pkg-a",
+      version: "1.0.0",
+    }),
+    "packages/pkg-a/CHANGELOG.md":
+      "# pkg-a\n\n## 1.0.0\n\n### Major Changes\n\n- Node first release\n",
+    "Cargo.toml": '[workspace]\nmembers = ["crates/*"]\nresolver = "2"\n',
+    "crates/crate-b/Cargo.toml":
+      '[package]\nname = "crate-b"\nversion = "0.3.0"\nedition = "2021"\n',
+    "crates/crate-b/src/main.rs": "fn main() {}\n",
+    "crates/crate-b/CHANGELOG.md":
+      "# crate-b\n\n## 0.3.0\n\n### Minor Changes\n\n- Rust first release\n",
+  });
+}
+
+describe("polyglot", () => {
+  it("opens one version PR for releases in every ecosystem", async () => {
+    await using fixture = await createPolyglotFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({ data: [] }));
+    mockedGithubMethods.pulls.create.mockImplementationOnce(() => ({
+      data: { number: 7 },
+    }));
+    await writeChangesets(
+      [
+        {
+          releases: [
+            { name: "pkg-a", type: "minor" },
+            { name: "crate-b", type: "patch" },
+          ],
+          summary: "A polyglot change",
+        },
+      ],
+      cwd,
+    );
+
+    const result = await runVersion({ github: createGithub(cwd), cwd });
+
+    expect(result).toEqual({ pullRequestNumber: 7 });
+    const body: string = mockedGithubMethods.pulls.create.mock.calls[0][0].body;
+    expect(body).toContain("## pkg-a@1.1.0");
+    expect(body).toContain("## crate-b@0.3.1");
+    expect(body.match(/A polyglot change/g)).toHaveLength(2);
+    // shiprig stamped the crate's own manifest.
+    expect(
+      await fs.readFile(path.join(cwd, "crates/crate-b/Cargo.toml"), "utf8"),
+    ).toContain('version = "0.3.1"');
+  });
+
+  it("creates a GitHub release for every tag shiprig reports, whatever its ecosystem", async () => {
+    await using fixture = await createPolyglotFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+
+    // `shiprig tag` writes the same CHANGESETS_OUTPUT events `shiprig
+    // publish` does, without reaching a registry.
+    const result = await runPublish({
+      script: `${process.env.SHIPRIG_BIN} tag`,
+      github: createGithub(cwd),
+      createGithubReleases: true,
+      pushGitTags: false,
+      cwd,
+    });
+
+    expect(result).toEqual({
+      published: true,
+      publishedPackages: expect.arrayContaining([
+        { name: "pkg-a", version: "1.0.0" },
+        { name: "crate-b", version: "0.3.0" },
+      ]),
+      exitCode: 0,
+    });
+    const releases = mockedGithubMethods.repos.createRelease.mock.calls.map(
+      ([arg]) => [arg.tag_name, arg.body.trim()],
+    );
+    expect(releases).toEqual(
+      expect.arrayContaining([
+        ["pkg-a@1.0.0", "### Major Changes\n\n- Node first release"],
+        ["crate-b@0.3.0", "### Minor Changes\n\n- Rust first release"],
+      ]),
+    );
   });
 });

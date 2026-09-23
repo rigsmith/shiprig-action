@@ -27,3 +27,19 @@ runs:
     - name: Install dependencies
       shell: bash
       run: pnpm install --frozen-lockfile
+
+    # The tests run the real shiprig (docs/DESIGN.md). Pinned to the rigsmith
+    # commit that carries every contract the action uses, until a release
+    # (>= 1.20.0) does; then this becomes a released binary.
+    - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+      with:
+        go-version: stable
+        cache: false
+
+    - name: Install shiprig
+      shell: bash
+      env:
+        SHIPRIG_REF: 68fbee63d7ac1ca5ed0f83dc3fafc7894cd0c25f
+      run: |
+        GOBIN="$RUNNER_TEMP/shiprig-bin" go install "github.com/rigsmith/rigsmith/cmd/shiprig@${SHIPRIG_REF}"
+        echo "SHIPRIG_BIN=$RUNNER_TEMP/shiprig-bin/shiprig" >> "$GITHUB_ENV"
