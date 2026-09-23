@@ -22,6 +22,14 @@ Nothing here is scheduled; it's a ranked list to pick from.
 - **C. Real release notes in the PR body.** Inherited from upstream: the body
   shows each package's rendered changelog entry.
 
+- **B. Publish only when the version PR merges** (v0.3.0). `publish-on:
+version-pr-merge`, the default, publishes on the push that merges
+  `changeset-release/<base>` (found through the PRs GitHub associates with the
+  commit) and on runs started by hand; `every-push` keeps changesets/action's
+  behaviour. A tag the publish script already pushed is left alone instead of
+  warning "Reference already exists", and a tag the action can't push fails the
+  run.
+
 ## Next
 
 ### 1. Dogfood in rigsmith, in two stages
@@ -63,27 +71,13 @@ no input yet.
 - **Settings.** Top level, with a per-package section where it makes sense:
   - the version PR: title, commit message, branch, labels, draft;
   - `createGithubReleases` (rigsmith sets it to `false`, see stage 2);
-  - when to publish (item 3);
+  - when to publish (`publish-on`, an input since v0.3.0);
   - Release-As overrides (item 5);
   - a PR per package or group (item 6).
 - **Separate from the release pipeline.** `.changeset/release.jsonc`
   configures the local `shiprig release` steps (version → commit → tag →
   push); `.shiprig.jsonc` configures the action. Neither reads the other's
   settings.
-
-### 3. Publish only when the version PR merges (B)
-
-Every push to `main` with nothing pending runs `publish-script`; the v0.1.0 run
-logged "No changesets found. Attempting to publish any unpublished packages".
-It's harmless (our `release.ts` only acts on a new version, and shiprig skips
-what's already published) but costs a run each push and makes "why did this
-publish?" hard to answer. Check the merged commit is the version PR, by label
-as release-please does (`autorelease: pending` → `tagged`) or by commit.
-
-Do it with the tag warning: after a publish script has pushed a tag, the action
-tries to create it again and logs "Failed to create git tag … Reference
-already exists". It could skip tags the script reported through
-`CHANGESETS_OUTPUT`.
 
 ### 4. No approval step on the version PR's CI
 
@@ -156,7 +150,7 @@ stand.
 | --- | ------------------------------------------- | ------------------------------------------ | ------------------------------------------ | ---------------------------------------------------------------------------------- |
 | 1   | More than npm                               | Strategies for many ecosystems             | `package.json` only                        | **Covered**: shiprig's ecosystem adapters                                          |
 | 2   | A record of what was released               | Manifest plus `last-release-sha`           | Trusts `package.json`                      | Partial: `.changeset/versions.json` for unstamped versions; no last-release commit |
-| 3   | Publish only when the release PR merges     | `autorelease: pending` → `tagged` labels   | Publishes on every push with no changesets | **Open**: item 3                                                                   |
+| 3   | Publish only when the release PR merges     | `autorelease: pending` → `tagged` labels   | Publishes on every push with no changesets | **Covered**: `publish-on` (v0.3.0)                                                 |
 | 4   | Tags and GitHub Releases without a registry | The tag and GitHub Release are the release | Via `changeset publish` / `git-tag`        | **Covered**: `shiprig tag`, and the action's GitHub releases                       |
 | 5   | Changelog sections by type                  | `changelog-sections`                       | Major/Minor/Patch only                     | **Covered**: groups by conventional type                                           |
 | 6   | Commit and PR links by default              | On by default                              | Needs `changelog-github` and a token       | Partial: supported, not the default                                                |

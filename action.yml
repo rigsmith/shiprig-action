@@ -43,6 +43,15 @@ inputs:
       this option will also always be `true`.
     required: false
     default: true
+  publish-on:
+    description: >
+      When the publish path runs, once no changesets are pending. `version-pr-merge` (the
+      default): only on the push that merges the version PR (`changeset-release/<base>`),
+      and on a run started by hand (`workflow_dispatch`); other events don't publish.
+      `every-push`: on every push with nothing pending,
+      as changesets/action does, relying on the publish script to skip what's already out.
+    required: false
+    default: version-pr-merge
   push-with-git-cli:
     description: >
       Whether to use the Git CLI instead of the GitHub API to push release commits and tags.

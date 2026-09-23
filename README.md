@@ -43,6 +43,7 @@ name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch: # publish by hand: a first release, or a retry
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
@@ -63,7 +64,7 @@ jobs:
           node-version: 22
 
       - name: Install shiprig
-        run: npm install -g @rigsmith/shiprig@1.20.0
+        run: npm install -g @rigsmith/shiprig@1.20.2
 
       - uses: rigsmith/shiprig-action@v0
         with:
@@ -86,7 +87,19 @@ The action sets `CHANGESETS_OUTPUT` to a file before running `publish-script`.
 `shiprig publish` writes an event there for each git tag it creates, and the
 action reads them back to push exactly those tags and create their GitHub
 releases. A custom script needs to run `shiprig publish` (or `shiprig tag`)
-somewhere, or the action won't know what was released.
+somewhere, or the action won't know what was released. A tag the script already
+pushed itself is left as it is; a tag the action can't push fails the run,
+since nothing would release it.
+
+**When it publishes.** By default (`publish-on: version-pr-merge`) the publish
+path runs only on the push that merges the version PR (a merged PR from this
+repository's version branch, found through the pull requests GitHub associates
+with the pushed commit), and on any run you start by hand (`workflow_dispatch`,
+which the workflow above allows), for a first release or a retry. Other pushes,
+and other events such as a schedule, log "Nothing to publish" and stop. `publish-on: every-push`
+publishes on every push with nothing pending, as changesets/action does, and
+relies on the publish script to skip what's already out. The job needs
+`pull-requests: read` (or a `github-token` with it) to look the PR up.
 
 ### Conventional commits
 
@@ -131,7 +144,7 @@ runs the shiprig it was tested with.
 - **npm** (any runner with Node; published with provenance):
 
   ```yaml
-  - run: npm install -g @rigsmith/shiprig@1.20.0
+  - run: npm install -g @rigsmith/shiprig@1.20.2
   ```
 
 - **The install script** (Linux and macOS runners):
@@ -180,6 +193,9 @@ The split flow (select-mode → pack → publish) is phase 4 in
 3. If you set `version-script` or `publish-script` to `changeset …` commands,
    switch them to `shiprig version --yes` and `shiprig publish --yes`, or drop
    `version-script` (that's the default).
+4. Publishing now happens only when the version PR merges. If you release by
+   pushing version bumps straight to the base branch, set
+   `publish-on: every-push`.
 
 The version branch name stays `changeset-release/<base>`, so changeset-bot and
 anything else that looks for it keep working. The default PR title and commit
@@ -201,6 +217,7 @@ message change: `chore: release 1.2.0` rather than `Version Packages`. Set
 | `pr-base-branch`         | Sets the base branch of the PR. Defaults to `github.ref_name`.                                                                                                                                                                                                                        |
 | `create-github-releases` | Whether to create GitHub releases after publish                                                                                                                                                                                                                                       |
 | `push-git-tags`          | Whether to create git tags after publish. If `create-github-releases` is set to `true`, this option will also always be `true`.                                                                                                                                                       |
+| `publish-on`             | When the publish path runs once nothing is pending: `version-pr-merge` (default), only on the push that merges the version PR and on runs started by hand; `every-push`, on every push, as changesets/action does.                                                                    |
 | `push-with-git-cli`      | Whether to use the Git CLI instead of the GitHub API to push release commits and tags. Defaults to `false`. When using the GitHub API, commits and tags are signed using GitHub's GPG key and attributed to the user or app that owns the `github-token`.                             |
 | `cwd`                    | The working directory to run shiprig in. Defaults to the root of the repository.                                                                                                                                                                                                      |
 
