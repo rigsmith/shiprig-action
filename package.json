@@ -1,6 +1,6 @@
 {
-  "name": "@changesets/action",
-  "version": "2.1.2",
+  "name": "shiprig-action",
+  "version": "0.4.0",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -41,6 +41,7 @@
     "@changesets/cli": "^3.0.1",
     "@changesets/types": "^7.0.0",
     "@changesets/write": "^1.0.1",
+    "@rigsmith/shiprig": "1.20.3",
     "@tsconfig/node24": "^24.0.5",
     "@types/node": "^26.3.0",
     "@types/semver": "^7.8.0",

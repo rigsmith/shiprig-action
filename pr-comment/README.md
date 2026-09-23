@@ -1,6 +1,6 @@
-# changesets/action/pr-comment
+# rigsmith/shiprig-action/pr-comment
 
-This action creates or updates comments on PRs, aimed to complement [changesets/action/pr-status](../pr-status/README.md).
+This action creates or updates comments on PRs, aimed to complement [rigsmith/shiprig-action/pr-status](../pr-status/README.md).
 
 Its features are kept intentionally simple. For advanced usecases, check out other actions such as [mshick/add-pr-comment](https://github.com/marketplace/actions/add-pr-comment) and [peter-evans/create-or-update-comment](https://github.com/marketplace/actions/create-or-update-comment).
 
@@ -30,10 +30,10 @@ jobs:
   pr-comment:
     runs-on: ubuntu-slim
     permissions:
-      pull-requests: write # to create and update comments on PRs (changesets/action/pr-comment)
+      pull-requests: write # to create and update comments on PRs (rigsmith/shiprig-action/pr-comment)
     steps:
       - name: Comment on PR
-        uses: changesets/action/pr-comment@v2
+        uses: rigsmith/shiprig-action/pr-comment@v0
         with:
           body: Hello world!
 ```
@@ -48,7 +48,7 @@ jobs:
     # ...
     steps:
       - name: Comment on PR
-        uses: changesets/action/pr-comment@v2
+        uses: rigsmith/shiprig-action/pr-comment@v0
         with:
           body: Hello world!
           update-id: my-tag
@@ -61,7 +61,7 @@ jobs:
   pr-comment:
     # ...
     steps:
-      - uses: changesets/action/pr-comment@v2
+      - uses: rigsmith/shiprig-action/pr-comment@v0
         with:
           body: Hello world!
           update-id: ""

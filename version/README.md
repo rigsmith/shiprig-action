@@ -1,10 +1,10 @@
-# changesets/action/version
+# rigsmith/shiprig-action/version
 
-This action versions packages and creates or updates a pull request with the changes.
+This action versions packages with shiprig and creates or updates a pull request with the changes.
 
 ## Requirements
 
-- Needs repo checked out and `@changesets/cli` installed
+- Needs repo checked out and **shiprig ≥ 1.20.0** on `PATH` (or at `$SHIPRIG_BIN`)
 - [Job permissions][job-permissions]:
   - `contents: write`: to commit version changes
   - `pull-requests: write`: to create pull request
@@ -16,22 +16,22 @@ This action versions packages and creates or updates a pull request with the cha
 ## Usage
 
 > [!TIP]
-> Check out [the docs](https://changesets.dev/guide/automating#how-do-i-run-the-version-and-publish-commands) to learn how to set up the version and publish workflow.
+> See [the root README](../README.md) for a complete workflow and for installing shiprig.
 
 ## API
 
 <!-- api-start -->
 
-| Inputs              | Description                                                                                                                                                                                                                             |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `github-token`      | The GitHub token to use for authentication. Defaults to the GitHub-provided token. To use a custom token, pass it explicitly to this input.                                                                                             |
-| `script`            | The command to use to version packages                                                                                                                                                                                                  |
-| `commit-message`    | The commit message. Default to `Version Packages`                                                                                                                                                                                       |
-| `pr-title`          | The pull request title. Default to `Version Packages`                                                                                                                                                                                   |
-| `pr-draft`          | Controls draft PR behavior. Use 'create' to create new version PRs as draft, or 'always' to also convert existing version PRs back to draft when updating them.                                                                         |
-| `pr-base-branch`    | Sets the base branch of the PR. Defaults to `github.ref_name`.                                                                                                                                                                          |
-| `push-with-git-cli` | Whether to use the Git CLI instead of the GitHub API to push release commits. Defaults to `false`. When using the GitHub API, commits are signed using GitHub's GPG key and attributed to the user or app that owns the `github-token`. |
-| `cwd`               | The working directory to execute Changesets in. Defaults to the root of the repository.                                                                                                                                                 |
+| Inputs              | Description                                                                                                                                                                                                                                     |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `github-token`      | The GitHub token to use for authentication. Defaults to the GitHub-provided token. To use a custom token, pass it explicitly to this input.                                                                                                     |
+| `script`            | The command to use to version packages                                                                                                                                                                                                          |
+| `commit-message`    | The commit message. Defaults to the pull request's default title.                                                                                                                                                                               |
+| `pr-title`          | The pull request title. Defaults to `chore: release` plus what it releases: `chore: release 1.2.0` when everything shares one version, `chore: release core@1.2.0, ui@0.5.0` for up to three packages, `chore: release 5 packages` beyond that. |
+| `pr-draft`          | Controls draft PR behavior. Use 'create' to create new version PRs as draft, or 'always' to also convert existing version PRs back to draft when updating them.                                                                                 |
+| `pr-base-branch`    | Sets the base branch of the PR. Defaults to `github.ref_name`.                                                                                                                                                                                  |
+| `push-with-git-cli` | Whether to use the Git CLI instead of the GitHub API to push release commits. Defaults to `false`. When using the GitHub API, commits are signed using GitHub's GPG key and attributed to the user or app that owns the `github-token`.         |
+| `cwd`               | The working directory to run shiprig (or the custom script) in. Defaults to the root of the repository.                                                                                                                                         |
 
 | Outputs     | Description                                         |
 | ----------- | --------------------------------------------------- |

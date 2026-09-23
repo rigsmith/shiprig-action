@@ -1,4 +1,4 @@
-name: Changesets - Version
+name: shiprig release - Version
 description: Version packages
 runs:
   using: node24
@@ -14,28 +14,31 @@ inputs:
     description: "The command to use to version packages"
     required: false
   commit-message:
-    description: "The commit message. Default to `Version Packages`"
+    description: "The commit message. Defaults to the pull request's default title. Can also be set as `commitMessage` in `shiprig-action.jsonc`; this input wins over the file."
     required: false
-    default: "Version Packages"
   pr-title:
-    description: "The pull request title. Default to `Version Packages`"
+    description: >
+      The pull request title. Defaults to `chore: release` plus what it releases:
+      `chore: release 1.2.0` when everything shares one version,
+      `chore: release core@1.2.0, ui@0.5.0` for up to three packages, and
+      `chore: release 5 packages` beyond that.
+      Can also be set as `prTitle` in `shiprig-action.jsonc`; this input wins over the file.
     required: false
-    default: "Version Packages"
   pr-draft:
-    description: "Controls draft PR behavior. Use 'create' to create new version PRs as draft, or 'always' to also convert existing version PRs back to draft when updating them."
+    description: "Controls draft PR behavior. Use 'create' to create new version PRs as draft, or 'always' to also convert existing version PRs back to draft when updating them. Can also be set as `prDraft` in `shiprig-action.jsonc`; this input wins over the file."
     required: false
   pr-base-branch:
-    description: "Sets the base branch of the PR. Defaults to `github.ref_name`."
+    description: "Sets the base branch of the PR. Defaults to `github.ref_name`. Can also be set as `prBaseBranch` in `shiprig-action.jsonc`; this input wins over the file."
     required: false
   push-with-git-cli:
     description: >
       Whether to use the Git CLI instead of the GitHub API to push release commits.
       Defaults to `false`. When using the GitHub API, commits are signed using GitHub's
       GPG key and attributed to the user or app that owns the `github-token`.
+      Can also be set as `pushWithGitCli` in `shiprig-action.jsonc`; this input wins over the file.
     required: false
-    default: false
   cwd:
-    description: "The working directory to execute Changesets in. Defaults to the root of the repository."
+    description: "The working directory to run shiprig (or the custom script) in. Defaults to the root of the repository."
     required: false
 outputs:
   pr-number:

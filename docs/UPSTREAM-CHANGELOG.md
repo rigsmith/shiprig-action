@@ -1,0 +1,397 @@
+# @changesets/action (upstream)
+
+The changelog of [changesets/action](https://github.com/changesets/action) up to
+v2.1.2, the version shiprig-action was forked from. shiprig-action's own changes
+are in [CHANGELOG.md](../CHANGELOG.md).
+
+## 2.1.2
+
+### Patch Changes
+
+- [#735](https://github.com/changesets/action/pull/735) [`8833883`](https://github.com/changesets/action/commit/88338839e35c3e0fa61f3c9c3f27e7572cd5f2cf) Thanks [@bluwy](https://github.com/bluwy)! - Handle error when pushing git tags with the git CLI
+
+- [#724](https://github.com/changesets/action/pull/724) [`36f529f`](https://github.com/changesets/action/commit/36f529f13ab58bbcf6331035cb950385586e8a89) Thanks [@bluwy](https://github.com/bluwy)! - Improve log messages
+
+- [#724](https://github.com/changesets/action/pull/724) [`36f529f`](https://github.com/changesets/action/commit/36f529f13ab58bbcf6331035cb950385586e8a89) Thanks [@bluwy](https://github.com/bluwy)! - Fix root action double error logs
+
+- [#729](https://github.com/changesets/action/pull/729) [`ca85897`](https://github.com/changesets/action/commit/ca8589735af2ff6977a0f6474537d550040530d8) Thanks [@bluwy](https://github.com/bluwy)! - Always switch and reset branch when generating version commits, similar to if `push-with-git-cli` is enabled
+
+## 2.1.1
+
+### Patch Changes
+
+- [#721](https://github.com/changesets/action/pull/721) [`da1ea29`](https://github.com/changesets/action/commit/da1ea291ef93203a08fad360eac36f4858dd0514) Thanks [@KEBABSELLER6](https://github.com/KEBABSELLER6)! - Fixed typo in renamed inputs from v1 to v2
+
+## 2.1.0
+
+### Minor Changes
+
+- [#718](https://github.com/changesets/action/pull/718) [`3b7c71c`](https://github.com/changesets/action/commit/3b7c71c440e75fca5d335f779290425fc1117fe8) Thanks [@bluwy](https://github.com/bluwy)! - Add a `cwd` input to the root action, `/select-mode`, `/version`, `/pack`, and `/publish` sub-actions to set the current working directory to execute Changesets in. This input existed in v1 but was incorrectly removed.
+
+### Patch Changes
+
+- [#716](https://github.com/changesets/action/pull/716) [`6f58ba3`](https://github.com/changesets/action/commit/6f58ba35801ec075a1c87569277591f8ef1a3029) Thanks [@bluwy](https://github.com/bluwy)! - Update `pr-status` message to link to the new faq page
+
+## 2.0.0
+
+### Major Changes
+
+- [#692](https://github.com/changesets/action/pull/692) [`cb3f011`](https://github.com/changesets/action/commit/cb3f0110d7423cd340b1c5d63584c0ea6ee63959) Thanks [@Andarist](https://github.com/Andarist)! - Release commits and tags are now pushed using the GitHub API by default.
+
+  Replace the `commit-mode` input with the boolean `push-with-git-cli` input. Set `push-with-git-cli: true` to continue using the Git CLI.
+
+  Regardless of the push mode, custom GitHub tokens must be passed explicitly through the `github-token` input. The `GITHUB_TOKEN` environment variable and credentials configured by `actions/checkout` or embedded in remote URLs are not substitutes for this input. When the Git CLI is enabled, `github-token` takes precedence over those repository credentials.
+
+- [#680](https://github.com/changesets/action/pull/680) [`ca57073`](https://github.com/changesets/action/commit/ca57073900dc678254406a052a03c0c8824e319d) Thanks [@bluwy](https://github.com/bluwy)! - Add a new `push-git-tags` option that complements `create-github-releases` to control specifically if git tags should be created but not GitHub releases.
+
+  If `create-github-releases` was previously set to `false`, which also indirectly disabled git tag creation, git tags will now be created instead by default. If this is not desired, set `push-git-tags` to `false` explicitly.
+
+- [#657](https://github.com/changesets/action/pull/657) [`4f718b5`](https://github.com/changesets/action/commit/4f718b5921490b1efeb015a81abb6a4633892851) Thanks [@Andarist](https://github.com/Andarist)! - Removed compatibility support for old Changesets v1.
+
+- [#681](https://github.com/changesets/action/pull/681) [`7359107`](https://github.com/changesets/action/commit/73591071e61c7f61cf322dd7a6341dc29a8e1d4e) Thanks [@bluwy](https://github.com/bluwy)! - Rename the root action inputs and outputs to better match the sub-actions' conventions.
+
+  Inputs:
+
+  - `version` -> `version-script`
+  - `publish` -> `publish-script`
+  - `commit` -> `commit-message`
+  - `title` -> `pr-title`
+  - `branch` -> `pr-base-branch`
+
+  Outputs:
+
+  - `pull-request-number` -> `pr-number`
+
+- [#674](https://github.com/changesets/action/pull/674) [`164652b`](https://github.com/changesets/action/commit/164652bdd60525670d95291addb8c6f92833ac60) Thanks [@bluwy](https://github.com/bluwy)! - Remove support for passing custom GitHub token through the GITHUB_TOKEN environment variable. It should be passed to the `github-token` input instead.
+
+- [#659](https://github.com/changesets/action/pull/659) [`5649ff4`](https://github.com/changesets/action/commit/5649ff41b8eb1b7a281011e45df781c6d4628fd0) Thanks [@bluwy](https://github.com/bluwy)! - Remove `cwd` option for `changesets/action`. Use the step `working-directory` option instead to change the directory.
+
+- [#673](https://github.com/changesets/action/pull/673) [`823cf74`](https://github.com/changesets/action/commit/823cf741ca57c5e22652123d3a847dfafcd77ca0) Thanks [@bluwy](https://github.com/bluwy)! - Update to Changesets v3 packages
+
+- [#695](https://github.com/changesets/action/pull/695) [`469993c`](https://github.com/changesets/action/commit/469993ce5783c6a38e72541d4ba0d25588702b9a) Thanks [@bluwy](https://github.com/bluwy)! - Removed `.npmrc` handling when the `NPM_TOKEN` environment variable is set.
+
+  Authentication should be handled via Trusted Publishing instead. If a token is still needed, use `actions/setup-node` to set it up instead via the `registry-url` option. Check out the updated action README for more information of setting up npm authentication in GitHub Actions.
+
+- [#668](https://github.com/changesets/action/pull/668) [`0eae789`](https://github.com/changesets/action/commit/0eae789230defbc4ad287e9b476aba7e842e34e0) Thanks [@bluwy](https://github.com/bluwy)! - Rename the input and output names to kebab-case instead of camelCase to match the official GitHub actions pattern
+
+### Minor Changes
+
+- [#656](https://github.com/changesets/action/pull/656) [`a12d90d`](https://github.com/changesets/action/commit/a12d90de8394e63c952622b2fd3f98c8729c48b0) Thanks [@bluwy](https://github.com/bluwy)! - Add new `/select-mode`, `/version`, and `/publish` sub-actions to better control version and publish steps
+
+- [#678](https://github.com/changesets/action/pull/678) [`f71ae04`](https://github.com/changesets/action/commit/f71ae043ed5deb17952900091e009a60edef9507) Thanks [@Andarist](https://github.com/Andarist)! - Published packages detection done through stdout parsing was replaced with one based on the shared output file using `CHANGESETS_OUTPUT` environment variable. When using custom scripts this environment variable should always be passed down to the Changesets CLI invocations.
+
+### Patch Changes
+
+- [#699](https://github.com/changesets/action/pull/699) [`5b307d3`](https://github.com/changesets/action/commit/5b307d3df25daf51c41dff70d2f66df1579ae9fa) Thanks [@Andarist](https://github.com/Andarist)! - Validate that projects use Changesets CLI v3 and direct Changesets CLI v2 users to `changesets/action@v1`.
+
+- [#697](https://github.com/changesets/action/pull/697) [`84d78c6`](https://github.com/changesets/action/commit/84d78c68f98f20e24dfff22b22193e7b4f326ad9) Thanks [@Andarist](https://github.com/Andarist)! - Allow custom publish scripts to complete without a Changesets output file, warning that GitHub releases and git tags cannot be created when that file is missing.
+
+- [#670](https://github.com/changesets/action/pull/670) [`5a8b9b7`](https://github.com/changesets/action/commit/5a8b9b721bf683e3bf9bd72ea92a685dc024147b) Thanks [@Andarist](https://github.com/Andarist)! - Authenticate git CLI pushes with the configured GitHub token using Git extra headers instead of writing to a global `.netrc` file.
+
+- [#670](https://github.com/changesets/action/pull/670) [`5a8b9b7`](https://github.com/changesets/action/commit/5a8b9b721bf683e3bf9bd72ea92a685dc024147b) Thanks [@Andarist](https://github.com/Andarist)! - Derive the Git server URL from the GitHub Actions context when configuring git CLI authentication to support GitHub Enterprise Server setups.
+
+- [#688](https://github.com/changesets/action/pull/688) [`219ea82`](https://github.com/changesets/action/commit/219ea82e52caaff2a10a5e34d3455093cf958238) Thanks [@Andarist](https://github.com/Andarist)! - Remove the `setup-git-user` input. Complete custom Git identities are now preserved automatically, while `github-actions[bot]` is configured as a fallback before creating local release commits or tags.
+
+## 2.0.0-next.5
+
+### Patch Changes
+
+- [#711](https://github.com/changesets/action/pull/711) [`5fa6767`](https://github.com/changesets/action/commit/5fa67671df41b7a8a9d8123e8e446b1a8ad423db) Thanks [@Andarist](https://github.com/Andarist)! - Fix support for prerelease exits using the new `.changeset/pre` layout.
+
+## 2.0.0-next.4
+
+### Major Changes
+
+- [#692](https://github.com/changesets/action/pull/692) [`cb3f011`](https://github.com/changesets/action/commit/cb3f0110d7423cd340b1c5d63584c0ea6ee63959) Thanks [@Andarist](https://github.com/Andarist)! - Release commits and tags are now pushed using the GitHub API by default.
+
+  Replace the `commit-mode` input with the boolean `push-with-git-cli` input. Set `push-with-git-cli: true` to continue using the Git CLI.
+
+  Regardless of the push mode, custom GitHub tokens must be passed explicitly through the `github-token` input. The `GITHUB_TOKEN` environment variable and credentials configured by `actions/checkout` or embedded in remote URLs are not substitutes for this input. When the Git CLI is enabled, `github-token` takes precedence over those repository credentials.
+
+- [#695](https://github.com/changesets/action/pull/695) [`469993c`](https://github.com/changesets/action/commit/469993ce5783c6a38e72541d4ba0d25588702b9a) Thanks [@bluwy](https://github.com/bluwy)! - Removed `.npmrc` handling when the `NPM_TOKEN` environment variable is set.
+
+  Authentication should be handled via Trusted Publishing instead. If a token is still needed, use `actions/setup-node` to set it up instead via the `registry-url` option. Check out the updated action README for more information of setting up npm authentication in GitHub Actions.
+
+### Patch Changes
+
+- [#699](https://github.com/changesets/action/pull/699) [`5b307d3`](https://github.com/changesets/action/commit/5b307d3df25daf51c41dff70d2f66df1579ae9fa) Thanks [@Andarist](https://github.com/Andarist)! - Validate that projects use Changesets CLI v3 and direct Changesets CLI v2 users to `changesets/action@v1`.
+
+- [#697](https://github.com/changesets/action/pull/697) [`84d78c6`](https://github.com/changesets/action/commit/84d78c68f98f20e24dfff22b22193e7b4f326ad9) Thanks [@Andarist](https://github.com/Andarist)! - Allow custom publish scripts to complete without a Changesets output file, warning that GitHub releases and git tags cannot be created when that file is missing.
+
+- [#705](https://github.com/changesets/action/pull/705) [`77be81b`](https://github.com/changesets/action/commit/77be81bcb9d2d1007c53c4f98bffe51da428d6a5) Thanks [@Andarist](https://github.com/Andarist)! - Fixed a regression making it impossible to sync new versions of versioning pull requests with base branch updates when using GitHub API pushes.
+
+- [#688](https://github.com/changesets/action/pull/688) [`219ea82`](https://github.com/changesets/action/commit/219ea82e52caaff2a10a5e34d3455093cf958238) Thanks [@Andarist](https://github.com/Andarist)! - Remove the `setup-git-user` input. Complete custom Git identities are now preserved automatically, while `github-actions[bot]` is configured as a fallback before creating local release commits or tags.
+
+## 2.0.0-next.3
+
+### Major Changes
+
+- [#680](https://github.com/changesets/action/pull/680) [`ca57073`](https://github.com/changesets/action/commit/ca57073900dc678254406a052a03c0c8824e319d) Thanks [@bluwy](https://github.com/bluwy)! - Add a new `push-git-tags` option that complements `create-github-releases` to control specifically if git tags should be created but not GitHub releases.
+
+  If `create-github-releases` was previously set to `false`, which also indirectly disabled git tag creation, git tags will now be created instead by default. If this is not desired, set `push-git-tags` to `false` explicitly.
+
+- [#681](https://github.com/changesets/action/pull/681) [`7359107`](https://github.com/changesets/action/commit/73591071e61c7f61cf322dd7a6341dc29a8e1d4e) Thanks [@bluwy](https://github.com/bluwy)! - Rename the root action inputs and outputs to better match the sub-actions' conventions.
+
+  Inputs:
+  - `version` -> `version-script`
+  - `publish` -> `publish-script`
+  - `commit` -> `commit-message`
+  - `title` -> `pr-title`
+  - `branch` -> `pr-base-branch`
+
+  Outputs:
+  - `pull-request-number` -> `pr-number`
+
+- [#674](https://github.com/changesets/action/pull/674) [`164652b`](https://github.com/changesets/action/commit/164652bdd60525670d95291addb8c6f92833ac60) Thanks [@bluwy](https://github.com/bluwy)! - Remove support for passing custom GitHub token through the GITHUB_TOKEN environment variable. It should be passed to the `github-token` input instead.
+
+- [#673](https://github.com/changesets/action/pull/673) [`823cf74`](https://github.com/changesets/action/commit/823cf741ca57c5e22652123d3a847dfafcd77ca0) Thanks [@bluwy](https://github.com/bluwy)! - Update to Changesets v3 packages
+
+- [#668](https://github.com/changesets/action/pull/668) [`0eae789`](https://github.com/changesets/action/commit/0eae789230defbc4ad287e9b476aba7e842e34e0) Thanks [@bluwy](https://github.com/bluwy)! - Rename the input and output names to kebab-case instead of camelCase to match the official GitHub actions pattern
+
+### Minor Changes
+
+- [#678](https://github.com/changesets/action/pull/678) [`f71ae04`](https://github.com/changesets/action/commit/f71ae043ed5deb17952900091e009a60edef9507) Thanks [@Andarist](https://github.com/Andarist)! - Published packages detection done through stdout parsing was replaced with one based on the shared output file using `CHANGESETS_OUTPUT` environment variable. When using custom scripts this environment variable should always be passed down to the Changesets CLI invocations.
+
+## 2.0.0-next.2
+
+### Patch Changes
+
+- [#670](https://github.com/changesets/action/pull/670) [`5a8b9b7`](https://github.com/changesets/action/commit/5a8b9b721bf683e3bf9bd72ea92a685dc024147b) Thanks [@Andarist](https://github.com/Andarist)! - Authenticate git CLI pushes with the configured GitHub token using Git extra headers instead of writing to a global `.netrc` file.
+
+- [#670](https://github.com/changesets/action/pull/670) [`5a8b9b7`](https://github.com/changesets/action/commit/5a8b9b721bf683e3bf9bd72ea92a685dc024147b) Thanks [@Andarist](https://github.com/Andarist)! - Derive the Git server URL from the GitHub Actions context when configuring git CLI authentication to support GitHub Enterprise Server setups.
+
+## 2.0.0-next.1
+
+### Patch Changes
+
+- [#663](https://github.com/changesets/action/pull/663) [`ccb3811`](https://github.com/changesets/action/commit/ccb38113eaaa4a13eb6aabe09520e49cc8519b84) Thanks [@Andarist](https://github.com/Andarist)! - Fix the computed publish plan path passed internally to `changeset pack` by the `/pack` subaction.
+
+- [#662](https://github.com/changesets/action/pull/662) [`5c88881`](https://github.com/changesets/action/commit/5c88881fff1f0d8b055d4a2d3a74a8ce843db6f3) Thanks [@Andarist](https://github.com/Andarist)! - Fixed usage of `--from-publish-plan` flag used by the `/pack` subaction
+
+- [#666](https://github.com/changesets/action/pull/666) [`dc29b73`](https://github.com/changesets/action/commit/dc29b738b532d9e95f46b9bf493e2e3fdf48a7ed) Thanks [@Andarist](https://github.com/Andarist)! - Fix the `/version` subaction to not crash on missing `pr-base-branch` input. This input is meant to be optional.
+
+## 2.0.0-next.0
+
+### Major Changes
+
+- [#657](https://github.com/changesets/action/pull/657) [`4f718b5`](https://github.com/changesets/action/commit/4f718b5921490b1efeb015a81abb6a4633892851) Thanks [@Andarist](https://github.com/Andarist)! - Removed compatibility support for old Changesets v1.
+
+- [#659](https://github.com/changesets/action/pull/659) [`5649ff4`](https://github.com/changesets/action/commit/5649ff41b8eb1b7a281011e45df781c6d4628fd0) Thanks [@bluwy](https://github.com/bluwy)! - Remove `cwd` option for `changesets/action`. Use the step `working-directory` option instead to change the directory.
+
+### Minor Changes
+
+- [#656](https://github.com/changesets/action/pull/656) [`a12d90d`](https://github.com/changesets/action/commit/a12d90de8394e63c952622b2fd3f98c8729c48b0) Thanks [@bluwy](https://github.com/bluwy)! - Add new `/select-mode`, `/version`, and `/publish` sub-actions to better control version and publish steps
+
+## 1.9.0
+
+### Minor Changes
+
+- [#636](https://github.com/changesets/action/pull/636) [`b072bcc`](https://github.com/changesets/action/commit/b072bccc4c664a373c42168eed9139dce1e003b1) Thanks [@bluwy](https://github.com/bluwy)! - Add a new `@changesets/action/pr-comment` sub-action to comment on PRs
+
+- [#625](https://github.com/changesets/action/pull/625) [`8795eee`](https://github.com/changesets/action/commit/8795eee5eee884e887d352ac673a515ffe35aaa6) Thanks [@bluwy](https://github.com/bluwy)! - Add a new `@changesets/action/pr-status` sub-action to generate the changeset status comment for PRs as an alternative to the [Changesets Bot](https://github.com/apps/changeset-bot).
+
+### Patch Changes
+
+- [#535](https://github.com/changesets/action/pull/535) [`34f64f6`](https://github.com/changesets/action/commit/34f64f6e2e1e47ddc183f174aa27c197aa47f520) Thanks [@Andarist](https://github.com/Andarist)! - Fixed an issue with GitHub releases not being created for successfully published packages when _some_ packages failed to be published to the registry.
+
+- [#632](https://github.com/changesets/action/pull/632) [`1d54b9e`](https://github.com/changesets/action/commit/1d54b9e660e435237accbcae0b4581af3be641b4) Thanks [@bluwy](https://github.com/bluwy)! - Simplify internal implementation to get changelog entries for a package version
+
+- [#629](https://github.com/changesets/action/pull/629) [`e0c90aa`](https://github.com/changesets/action/commit/e0c90aa7fbd0cc26931a679c5abe9bbc0deb0b50) Thanks [@bluwy](https://github.com/bluwy)! - Fix custom version and publish command argument parsing
+
+- [#645](https://github.com/changesets/action/pull/645) [`f9585d9`](https://github.com/changesets/action/commit/f9585d966a9c7d2f668b97199990de6f885823cf) Thanks [@Andarist](https://github.com/Andarist)! - Improved force-push handling when using `commitMode: "github-api"` so updating an existing branch no longer temporarily resets the target branch to the base commit, avoiding cases where GitHub closes open pull requests during the update. This should remove a possibility of a GitHub state race that caused the force-pushed PRs not being reopened.
+
+## 1.8.0
+
+### Minor Changes
+
+- [#258](https://github.com/changesets/action/pull/258) [`f5dbf72`](https://github.com/changesets/action/commit/f5dbf72f96949cb0daf45152f0f63062df70e97d) Thanks [@tom-sherman](https://github.com/tom-sherman)! - Support draft version PR modes with a new `prDraft` input. Use `create` to create new version PRs as drafts, or `always` to also convert existing version PRs back to draft when updating them.
+
+### Patch Changes
+
+- [#502](https://github.com/changesets/action/pull/502) [`6002dbd`](https://github.com/changesets/action/commit/6002dbd987f49a3c0a134910d9c7bca975b79977) Thanks [@oshytiko](https://github.com/oshytiko)! - Fixed initial `.changeset` state being picked up, when `cwd` parameter is provided
+
+- [#536](https://github.com/changesets/action/pull/536) [`81b3f61`](https://github.com/changesets/action/commit/81b3f61ebffcb868f73e4c0b2682517149c834a2) Thanks [@radnan](https://github.com/radnan)! - Fixed `.changeset` state being picked for the version command when `cwd` parameter is provided
+
+## 1.7.0
+
+### Minor Changes
+
+- [#564](https://github.com/changesets/action/pull/564) [`935fe87`](https://github.com/changesets/action/commit/935fe876b0054dfc962ac86bcddf028460040d46) Thanks [@Andarist](https://github.com/Andarist)! - Automatically use the GitHub-provided token to allow most users to avoid explicit `GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}` configuration.
+
+### Patch Changes
+
+- [#545](https://github.com/changesets/action/pull/545) [`54220dd`](https://github.com/changesets/action/commit/54220dd92c06e7da112b139f95d8beb933e4cdde) Thanks [@ryanbas21](https://github.com/ryanbas21)! - The `.npmrc` generation now intelligently handles both traditional NPM token authentication and trusted publishing scenarios by only appending the auth token when `NPM_TOKEN` is defined. This prevents 'undefined' from being written to the registry configuration when using OIDC tokens from GitHub Actions trusted publishing.
+
+- [#563](https://github.com/changesets/action/pull/563) [`6af4a7e`](https://github.com/changesets/action/commit/6af4a7ec080d23ac6b304f69b67fd0aa92e089e7) Thanks [@Andarist](https://github.com/Andarist)! - Don't error on already committed symlinks and executables that stay untouched
+
+## 1.6.0
+
+### Minor Changes
+
+- [#558](https://github.com/changesets/action/pull/558) [`342005d`](https://github.com/changesets/action/commit/342005d41242bccd9dd9ae8d3679efce96af48ae) Thanks [@harsha-venugopal-ledn](https://github.com/harsha-venugopal-ledn)! - Upgrade from Node.js 20 to Node.js 24 LTS
+
+## 1.5.3
+
+### Patch Changes
+
+- [#477](https://github.com/changesets/action/pull/477) [`9d933dc`](https://github.com/changesets/action/commit/9d933dcd11c284ac49a835db884c3c1008b2b96f) Thanks [@Andarist](https://github.com/Andarist)! - Updated `@actions/*` and `@octokit/*` dependencies.
+
+- [#479](https://github.com/changesets/action/pull/479) [`cf373e4`](https://github.com/changesets/action/commit/cf373e45c90a0cc564cd2770de3e9a3a4cdd4603) Thanks [@Andarist](https://github.com/Andarist)! - Switched to `esbuild` for bundling the dist file. This led to 45% file size reduction.
+
+- [#488](https://github.com/changesets/action/pull/488) [`022692b`](https://github.com/changesets/action/commit/022692ba027b33bf46d4d41907a317fbf04461a7) Thanks [@s0](https://github.com/s0)! - Fix PRs sometimes not getting reopened with `commitMode: github-api`
+
+  There was a race-condition that means sometimes existing PRs would not be found,
+  and new PRs would be opened. This has now been fixed by fetching existing PRs
+  before making any changes.
+
+- [#486](https://github.com/changesets/action/pull/486) [`7ed1955`](https://github.com/changesets/action/commit/7ed195554624ebd75c08aa477b53110f61cc78f7) Thanks [@s0](https://github.com/s0)! - Fixed situations in which `cwd` was specified as a relative path and used with (default) `commitMode: git-cli`
+
+- [#461](https://github.com/changesets/action/pull/461) [`e9c36b6`](https://github.com/changesets/action/commit/e9c36b696406360bf04204ad32e3dcf3ad752b77) Thanks [@nayounsang](https://github.com/nayounsang)! - Avoid hitting a deprecation warning when encountering errors from `@octokit/request-error`
+
+## 1.5.2
+
+### Patch Changes
+
+- [#473](https://github.com/changesets/action/pull/473) [`3c24abe`](https://github.com/changesets/action/commit/3c24abeab26da6335c181222faa2ea485a092cf8) Thanks [@s0](https://github.com/s0)! - Make git add work consistently with subdirectories
+
+  Ensure that when running the action from a subdirectory of a repository,
+  only the files from that directory are added, regardless of `commitMode`.
+
+## 1.5.1
+
+### Patch Changes
+
+- [#471](https://github.com/changesets/action/pull/471) [`15ab130`](https://github.com/changesets/action/commit/15ab1306067a396fa9ba7ad363e8a041d457782a) Thanks [@h3rmanj](https://github.com/h3rmanj)! - Bump `@changesets/ghcommit` to v1.4.0, which fixes an issue running this action in monorepos with `commitMode: github-api`
+
+- [#467](https://github.com/changesets/action/pull/467) [`6e57550`](https://github.com/changesets/action/commit/6e575506e63f9e69e475d3eccfdd61b448efc8ae) Thanks [@Vx-V](https://github.com/Vx-V)! - Avoid searching for an existing pull request early.
+
+## 1.5.0
+
+### Minor Changes
+
+- [#391](https://github.com/changesets/action/pull/391) [`207dc3d`](https://github.com/changesets/action/commit/207dc3da2d1907cae0454ce123935401332be72b) Thanks [@s0](https://github.com/s0)! - Introduce a new input `commitMode` that allows using the GitHub API for pushing tags and commits instead of the Git CLI.
+
+  When used with `"github-api"` value all tags and commits will be attributed to the user whose GITHUB_TOKEN is used, and also signed using GitHub's internal GPG key.
+
+## 1.4.10
+
+### Patch Changes
+
+- [#448](https://github.com/changesets/action/pull/448) [`8b16070`](https://github.com/changesets/action/commit/8b16070fe386eed3456c83eeed9460160432cf26) Thanks [@bluwy](https://github.com/bluwy)! - Use full git email (`41898282+github-actions[bot]@users.noreply.github.com`) for github-actions bot when making commits
+
+## 1.4.9
+
+### Patch Changes
+
+- [#415](https://github.com/changesets/action/pull/415) [`57ab80c`](https://github.com/changesets/action/commit/57ab80c61104c270bebc125910ae32da3a5aca46) Thanks [@benmccann](https://github.com/benmccann)! - Improve error message when attempting to publish without publish script defined
+
+## 1.4.8
+
+### Patch Changes
+
+- [#393](https://github.com/changesets/action/pull/393) [`48ab0d2`](https://github.com/changesets/action/commit/48ab0d2f2e77ae169182d022591ef5c18c931ff2) Thanks [@s0](https://github.com/s0)! - Ensure the PR remains open when updated
+
+- [#393](https://github.com/changesets/action/pull/393) [`48ab0d2`](https://github.com/changesets/action/commit/48ab0d2f2e77ae169182d022591ef5c18c931ff2) Thanks [@s0](https://github.com/s0)! - Switch to cheaper API for querying existing PRs
+
+## 1.4.7
+
+### Patch Changes
+
+- [#255](https://github.com/changesets/action/pull/255) [`f2660aa`](https://github.com/changesets/action/commit/f2660aa7e78365f53dbeb4cfa774c1499ec6483a) Thanks [@ernestognw](https://github.com/ernestognw)! - Allow customize PR `branch` field
+
+## 1.4.6
+
+### Patch Changes
+
+- [#350](https://github.com/changesets/action/pull/350) [`9385be9`](https://github.com/changesets/action/commit/9385be9e757839189ea5ee63ec4e3caa8a6ca71b) Thanks [@m-shaka](https://github.com/m-shaka)! - Bump the used node.js from 16 to 20
+
+## 1.4.5
+
+### Patch Changes
+
+- [#282](https://github.com/changesets/action/pull/282) [`eb19e25`](https://github.com/changesets/action/commit/eb19e25e7797cf33dc2de4caa071e85a8057a0f0) Thanks [@mark-omarov](https://github.com/mark-omarov)! - Updated a few dependencies to patch the security vulnerabilities that were reported for their older versions.
+
+## 1.4.4
+
+### Patch Changes
+
+- [#291](https://github.com/changesets/action/pull/291) [`db8a109`](https://github.com/changesets/action/commit/db8a1099bc0ba1dd6f46a5b9df4212e4f69e78c9) Thanks [@varl](https://github.com/varl)! - Wire up [`@octokit/plugin-throttling`](https://github.com/octokit/plugin-throttling.js) with all GitHub Octokit instances
+
+## 1.4.3
+
+### Patch Changes
+
+- [#289](https://github.com/changesets/action/pull/289) [`8b28186`](https://github.com/changesets/action/commit/8b2818674de86a7fc69aebb9ed6b486ee32eb96e) Thanks [@varl](https://github.com/varl)! - Use logging provided by `@actions/core`
+
+## 1.4.2
+
+### Patch Changes
+
+- [#286](https://github.com/changesets/action/pull/286) [`225a1e8`](https://github.com/changesets/action/commit/225a1e8cbcabb7b585174ba0ad806549db40d4cd) Thanks [@varl](https://github.com/varl)! - This patch implements the [`@octokit/plugin-throttling`](https://github.com/octokit/plugin-throttling.js) plugin and [wires
+  it up with the internal GitHub Octokit instance](https://github.com/actions/toolkit/tree/457303960f03375db6f033e214b9f90d79c3fe5c/packages/github#extending-the-octokit-instance).
+
+  This plugin is recommended by [the Octokit docs](://octokit.github.io/rest.js/v19#throttling) as it implements all the GitHub [best practices for integrators](https://docs.github.com/en/rest/guides/best-practices-for-integrators?apiVersion=2022-11-28).
+
+  This should help with `changesets/action` gitting spurious secondary rate limits and failing CI jobs, for which the only known workaround is to simply re-run the job.
+
+## 1.4.1
+
+### Patch Changes
+
+- [#123](https://github.com/changesets/action/pull/123) [`b78f480`](https://github.com/changesets/action/commit/b78f48099899f0a853c5d9cd3feb21a5440babbd) Thanks [@Andarist](https://github.com/Andarist)! - Updated `@actions/*` dependencies to avoid using deprecated features of the runner.
+
+## 1.4.0
+
+### Minor Changes
+
+- [#216](https://github.com/changesets/action/pull/216) [`398d7ed`](https://github.com/changesets/action/commit/398d7ed) Thanks [@quinnjn](https://github.com/quinnjn)! - Execute action with node16 instead of node12.
+
+### Patch Changes
+
+- [#228](https://github.com/changesets/action/pull/228) [`bff53cc`](https://github.com/changesets/action/commit/bff53cc50c1ebb33f8f558f9de2e0eb9a99230c6) Thanks [@iansan5653](https://github.com/iansan5653)! - Add `is:pull-request` to search query when looking for existing PR. This fixes an issue with user-owned PATs.
+
+* [#206](https://github.com/changesets/action/pull/206) [`8c3f5f5`](https://github.com/changesets/action/commit/8c3f5f5637a95a2327e78d5dabcf357978aedcbb) Thanks [@glasser](https://github.com/glasser)! - Skip creating a PR when all existing changesets are empty.
+
+## 1.3.0
+
+### Minor Changes
+
+- [#167](https://github.com/changesets/action/pull/167) [`993a0a0`](https://github.com/changesets/action/commit/993a0a090df78cee07481d3886dcd8b29deb9567) Thanks [@dmregister](https://github.com/dmregister)! - Added `pullRequestNumber` to the action's outputs
+
+### Patch Changes
+
+- [#157](https://github.com/changesets/action/pull/157) [`521c27b`](https://github.com/changesets/action/commit/521c27bf86ec53547d6a350d208fbbbc9d576fbc) Thanks [@emmenko](https://github.com/emmenko)! - Automatically adjust GitHub PR message if it exceeds a size limit of 60k characters by omitting some of the changelog information.
+
+## 1.2.2
+
+### Patch Changes
+
+- [#161](https://github.com/changesets/action/pull/161) [`52c9ce7`](https://github.com/changesets/action/commit/52c9ce75d9d8a14ea2d75e4157b0c15b7a4ac313) Thanks [@bicknellr](https://github.com/bicknellr)! - Change directory to `cwd` before running git user setup. This fixes an issue when the action starts its execution not in a git repository.
+
+## 1.2.1
+
+### Patch Changes
+
+- [#144](https://github.com/changesets/action/pull/144) [`898d125`](https://github.com/changesets/action/commit/898d125cee6ba00c6a11b6cadca512752c6c910c) Thanks [@Andarist](https://github.com/Andarist)! - Updated all Changesets dependencies. This should fix parsing issues for completely empty summaries that has been fixed in `@changesets/parse@0.3.11`.
+
+## 1.2.0
+
+### Minor Changes
+
+- [#130](https://github.com/changesets/action/pull/130) [`5c0997b`](https://github.com/changesets/action/commit/5c0997b25e175ecf5e1723ba07210bbcea5d92fb) Thanks [@akphi](https://github.com/akphi)! - Added `createGithubReleases` input option (defaults to `true`) to control whether to create Github releases during publish or not.
+
+* [#134](https://github.com/changesets/action/pull/134) [`1ed9bc2`](https://github.com/changesets/action/commit/1ed9bc24b7a56462c183eb815c8f4bdf0e2e5785) Thanks [@dmregister](https://github.com/dmregister)! - Added `cwd` input option that can be used in projects that are not in the root directory.
+
+## 1.1.0
+
+### Minor Changes
+
+- [#128](https://github.com/changesets/action/pull/128) [`1937303`](https://github.com/changesets/action/commit/19373036c4bad4b0183344b6f2623a3b0e42da6c) Thanks [@dhruvdutt](https://github.com/dhruvdutt)! - Setup the git user in the local config instead of the global one.
+
+* [#131](https://github.com/changesets/action/pull/131) [`d3db9ec`](https://github.com/changesets/action/commit/d3db9eceaf41d42c56d5370d504c86851627188f) Thanks [@jacklesliewise](https://github.com/jacklesliewise)! - Added `setupGitUser` option to enable or disable setting up a default git user
+
+## 1.0.0
+
+### Major Changes
+
+- [#118](https://github.com/changesets/action/pull/118) [`05c863d`](https://github.com/changesets/action/commit/05c863d3f980125585016a593b5cb45b27d19c2c) Thanks [@Andarist](https://github.com/Andarist)! - From now on this action will be released using the Changesets-based workflow (using itself). Thanks to that we'll have a good release history. The users will be able to find specific versions of the action and will be able to track changes over time. It also improves the security as the build artifact will always get built in the CI environment, using a frozen lockfile.

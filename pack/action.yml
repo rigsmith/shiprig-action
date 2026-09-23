@@ -1,4 +1,4 @@
-name: Changesets - Pack
+name: shiprig release - Pack
 description: Pack publishable packages into tarballs
 runs:
   using: node24

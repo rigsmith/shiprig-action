@@ -1,4 +1,10 @@
-# changesets/action/select-mode
+# rigsmith/shiprig-action/select-mode
+
+> [!WARNING]
+> **Not ported to shiprig yet.** This sub-action still runs the Changesets CLI,
+> so it needs `@changesets/cli` installed and only understands npm packages.
+> Porting it is phase 4 in [docs/DESIGN.md](../docs/DESIGN.md). The
+> [root action](../README.md) covers the same flow on shiprig in one job.
 
 This action selects the mode to run a Changesets workflow:
 

@@ -212,28 +212,79 @@ export class GitHub {
     );
   }
 
+  // A tag that's already on GitHub was pushed by the publish script (a release
+  // script that tags its own commit), so it's left alone. One that isn't is
+  // pushed here, and failing to push it fails the run: nothing downstream
+  // would release a tag that never reached GitHub.
   async pushTag(tag: string) {
-    try {
-      if (!this.pushWithGitCli) {
-        await this.octokit.rest.git.createRef({
-          ...context.repo,
-          ref: `refs/tags/${tag}`,
-          sha: context.sha,
-        });
-      } else {
-        await exec("git", ["push", "origin", tag], {
-          cwd: this.cwd,
-          env: {
-            ...process.env,
-            ...(await this.#getCliAuthEnv()),
-          } as Record<string, string>,
-        });
-      }
-    } catch (err) {
-      core.warning(
-        `Failed to create git tag "${tag}". Assuming it was manually pushed by the publish script: ${(err as Error).message}`,
-      );
+    if (await this.#remoteTagExists(tag)) {
+      core.info(`${tag} is already on GitHub (the publish script pushed it).`);
+      return;
     }
+    if (!this.pushWithGitCli) {
+      await this.octokit.rest.git.createRef({
+        ...context.repo,
+        ref: `refs/tags/${tag}`,
+        sha: context.sha,
+      });
+    } else {
+      await exec("git", ["push", "origin", tag], {
+        cwd: this.cwd,
+        env: {
+          ...process.env,
+          ...(await this.#getCliAuthEnv()),
+        } as Record<string, string>,
+      });
+    }
+  }
+
+  // The commit `base` points at now, when it isn't `sha`; undefined while it
+  // still is. A failure to read it throws: a run that can't tell whether it's
+  // stale shouldn't guess.
+  async baseMovedPast(base: string, sha: string): Promise<string | undefined> {
+    const { data } = await this.octokit.rest.git.getRef({
+      ...context.repo,
+      ref: `heads/${base}`,
+    });
+    return data.object.sha === sha ? undefined : data.object.sha;
+  }
+
+  async #remoteTagExists(tag: string): Promise<boolean> {
+    try {
+      await this.octokit.rest.git.getRef({
+        ...context.repo,
+        ref: `tags/${tag}`,
+      });
+      return true;
+    } catch (err) {
+      if ((err as { status?: number }).status === 404) {
+        return false;
+      }
+      throw err;
+    }
+  }
+
+  // Whether this run's commit is the version PR's merge: a merged pull request
+  // from this repository's `versionBranch` into `base` that GitHub associates
+  // with the commit (the merge, squash or last rebased commit). A fork's PR
+  // from a branch of the same name doesn't count.
+  async isVersionPrMerge(
+    versionBranch: string,
+    base: string,
+  ): Promise<boolean> {
+    const { data } =
+      await this.octokit.rest.repos.listPullRequestsAssociatedWithCommit({
+        ...context.repo,
+        commit_sha: context.sha,
+      });
+    return data.some(
+      (pr) =>
+        pr.merged_at != null &&
+        pr.head.ref === versionBranch &&
+        pr.head.repo?.full_name ===
+          `${context.repo.owner}/${context.repo.repo}` &&
+        pr.base.ref === base,
+    );
   }
 
   async prepareBranch(branch: string) {

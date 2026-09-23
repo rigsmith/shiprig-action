@@ -16,6 +16,10 @@ permissions: {} # each job should define its own permission explicitly
 
 jobs:
   select-mode:
+    # Upstream's own release of @changesets/action. This fork releases
+    # shiprig-action through its own flow, so it must not run here; the
+    # version/publish jobs need select-mode and are skipped with it.
+    if: github.repository == 'changesets/action'
     name: Select mode
     runs-on: ubuntu-latest
     timeout-minutes: 20

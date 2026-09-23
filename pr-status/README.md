@@ -1,4 +1,10 @@
-# changesets/action/pr-status
+# rigsmith/shiprig-action/pr-status
+
+> [!WARNING]
+> **Not ported to shiprig yet.** This sub-action still runs the Changesets CLI,
+> so it needs `@changesets/cli` installed and only understands npm packages.
+> Porting it is phase 4 in [docs/DESIGN.md](../docs/DESIGN.md). The
+> [root action](../README.md) covers the same flow on shiprig in one job.
 
 This action generates the changesets status in PRs, for example, whether it has changeset files and which packages will be released if the PR is merged.
 

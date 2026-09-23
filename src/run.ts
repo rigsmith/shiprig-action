@@ -10,20 +10,17 @@ import {
   type ExecOutput,
 } from "@actions/exec";
 import { context } from "@actions/github";
-import type { PreState } from "@changesets/types";
-import { type Package, getPackages } from "@manypkg/get-packages";
 import type { GitHub } from "./github.ts";
 import type { Octokit } from "./octokit.ts";
-import readChangesetState from "./readChangesetState.ts";
 import {
-  execChangesetsCli,
-  getChangedPackages,
-  getChangelogEntry,
-  getExecOutputChangesetsCli,
-  getVersionsByDirectory,
-  isErrorWithCode,
-  sortTheThings,
-} from "./utils.ts";
+  execShiprig,
+  getExecOutputShiprig,
+  listPackages,
+  readChangelog,
+  readPreState,
+  type ShiprigPackage,
+} from "./shiprig.ts";
+import { getChangelogEntry, sortTheThings } from "./utils.ts";
 
 // GitHub Issues/PRs messages have a max size limit on the
 // message body payload.
@@ -33,24 +30,19 @@ const MAX_CHARACTERS_PER_MESSAGE = 60000;
 
 const createRelease = async (
   octokit: Octokit,
-  { pkg, tagName }: { pkg: Package; tagName: string },
+  { pkg, tagName }: { pkg: ShiprigPackage; tagName: string },
 ) => {
-  let changelog;
-  try {
-    changelog = await fs.readFile(path.join(pkg.dir, "CHANGELOG.md"), "utf8");
-  } catch (err) {
-    if (isErrorWithCode(err, "ENOENT")) {
-      // if we can't find a changelog, the user has probably disabled changelogs
-      return;
-    }
-    throw err;
+  const changelog = await readChangelog(pkg);
+  if (changelog === undefined) {
+    // if we can't find a changelog, the user has probably disabled changelogs
+    return;
   }
-  let changelogEntry = getChangelogEntry(changelog, pkg.packageJson.version);
+  let changelogEntry = getChangelogEntry(changelog, pkg.version);
   if (!changelogEntry) {
     // we can find a changelog but not the entry for this version
     // if this is true, something has probably gone wrong
     throw new Error(
-      `Could not find changelog entry for ${pkg.packageJson.name}@${pkg.packageJson.version}`,
+      `Could not find changelog entry for ${pkg.name}@${pkg.version}`,
     );
   }
 
@@ -58,7 +50,7 @@ const createRelease = async (
     name: tagName,
     tag_name: tagName,
     body: changelogEntry.content,
-    prerelease: pkg.packageJson.version.includes("-"),
+    prerelease: pkg.version.includes("-"),
     ...context.repo,
   });
 };
@@ -168,6 +160,12 @@ export async function runPublish({
   // It might also be important for custom publish scripts to have a valid git user configured.
   await github.ensureGitUser();
 
+  // Checked before publishing, which can't be undone: a package list that
+  // fails validation stops the run while nothing has gone out yet, not after,
+  // when the tags it published would be left unreported. It's read again once
+  // the script has run (below), since a custom script may change versions.
+  await listPackages(cwd);
+
   let changesetPublishOutput: ExecOutput;
   const outputFile = path.join(
     process.env.RUNNER_TEMP ?? (await fs.realpath(os.tmpdir())),
@@ -190,18 +188,23 @@ export async function runPublish({
       execOptions,
     );
   } else {
-    const args = ["publish"];
     if (fromPackDir) {
-      args.push("--from-pack-dir", fromPackDir);
+      // `changeset publish --from-pack-dir` has no shiprig equivalent yet
+      // (the split pack/publish sub-actions are phase 4 in docs/DESIGN.md).
+      throw new Error(
+        "Publishing from a pack directory isn't supported by shiprig-action yet.",
+      );
     }
-    changesetPublishOutput = await getExecOutputChangesetsCli(
-      args,
+    changesetPublishOutput = await getExecOutputShiprig(
+      ["publish", "--yes"],
       execOptions,
     );
   }
 
-  let { packages, tool } = await getPackages(cwd);
-  let packagesByName = new Map(packages.map((x) => [x.packageJson.name, x]));
+  // The versions as they stand after the script, which is what its tag
+  // events name.
+  let packages = await listPackages(cwd);
+  let packagesByName = new Map(packages.map((x) => [x.name, x]));
   let output: ChangesetsOutputEvent[];
   try {
     output = await readChangesetsOutput(outputFile);
@@ -210,7 +213,7 @@ export async function runPublish({
       throw err;
     }
     core.warning(
-      `${err.message}. GitHub releases and git tags cannot be created without this output. Ensure the custom publish script passes CHANGESETS_OUTPUT to the Changesets CLI.`,
+      `${err.message}. GitHub releases and git tags cannot be created without this output. Ensure the custom publish script runs \`shiprig publish\` (or \`shiprig tag\`) with CHANGESETS_OUTPUT in its environment.`,
     );
     output = [];
   }
@@ -224,13 +227,6 @@ export async function runPublish({
     }
     return { pkg, tag: event.tag };
   });
-
-  if (tool.type === "root" && packages.length === 0) {
-    throw new Error(
-      `No package found.` +
-        "This is probably a bug in the action, please open an issue",
-    );
-  }
 
   if (createGithubReleases || pushGitTags) {
     await Promise.all(
@@ -249,8 +245,8 @@ export async function runPublish({
     return {
       published: true,
       publishedPackages: releases.map(({ pkg }) => ({
-        name: pkg.packageJson.name,
-        version: pkg.packageJson.version,
+        name: pkg.name,
+        version: pkg.version,
       })),
       exitCode: changesetPublishOutput.exitCode,
     };
@@ -269,7 +265,7 @@ type GetMessageOptions = {
     header: string;
   }[];
   prBodyMaxCharacters: number;
-  preState?: PreState;
+  preState?: { tag: string };
 };
 
 export async function getVersionPrBody({
@@ -279,16 +275,16 @@ export async function getVersionPrBody({
   prBodyMaxCharacters,
   branch,
 }: GetMessageOptions) {
-  let messageHeader = `This PR was opened by the [Changesets release](https://github.com/changesets/action) GitHub action. When you're ready to do a release, you can merge this and ${
+  let messageHeader = `This PR was opened by the [shiprig release](https://github.com/rigsmith/shiprig-action) GitHub action. When you're ready to do a release, you can merge this and ${
     hasPublishScript
-      ? `the packages will be published to npm automatically`
-      : `publish to npm yourself or [setup this action to publish automatically](https://github.com/changesets/action#with-publishing)`
+      ? `the packages will be published automatically`
+      : `publish them yourself or [set up this action to publish automatically](https://github.com/rigsmith/shiprig-action#with-publishing)`
   }. If you're not ready to do a release yet, that's fine, whenever you add more changesets to ${branch}, this PR will be updated.
 `;
   let messagePrestate = !!preState
     ? `⚠️⚠️⚠️⚠️⚠️⚠️
 
-\`${branch}\` is currently in **pre mode** so this branch has prereleases rather than normal releases. If you want to exit prereleases, run \`changeset pre exit\` on \`${branch}\`.
+\`${branch}\` is currently in **pre mode** so this branch has prereleases rather than normal releases. If you want to exit prereleases, run \`shiprig pre exit\` on \`${branch}\`.
 
 ⚠️⚠️⚠️⚠️⚠️⚠️
 `
@@ -341,15 +337,16 @@ type VersionOptions = {
 };
 
 type RunVersionResult = {
-  pullRequestNumber: number;
+  // Undefined when the run was stale and left the version PR alone.
+  pullRequestNumber?: number;
 };
 
 export async function runVersion({
   script,
   github,
   cwd = process.cwd(),
-  prTitle = "Version Packages",
-  commitMessage = "Version Packages",
+  prTitle,
+  commitMessage,
   hasPublishScript = false,
   prBodyMaxCharacters = MAX_CHARACTERS_PER_MESSAGE,
   branch = context.ref.replace("refs/heads/", ""),
@@ -358,42 +355,80 @@ export async function runVersion({
   const { octokit } = github;
   let versionBranch = `changeset-release/${branch}`;
 
-  let { preState } = await readChangesetState(cwd);
+  // Release workflows queue their runs (queue: max) rather than drop them, and
+  // GitHub doesn't guarantee the order they start in. A run that starts after
+  // a newer one would reset the version branch to its older commit, or reopen
+  // a version PR that was just merged. If the base has moved past this run's
+  // commit, the newer run owns the version PR, so this one leaves it alone.
+  // Checked before any work, and again just before the push, since the base
+  // can move while this run is versioning. What's checked is the branch the
+  // run is on (its commit is that branch's), which is the base unless
+  // pr-base-branch names another; a run that isn't on a branch has nothing
+  // newer to defer to.
+  const runBranch = context.ref.startsWith("refs/heads/")
+    ? context.ref.slice("refs/heads/".length)
+    : undefined;
+  const stale = async () => {
+    if (runBranch === undefined) return false;
+    const newerHead = await github.baseMovedPast(runBranch, context.sha);
+    if (newerHead === undefined) return false;
+    core.info(
+      `${runBranch} has moved on to ${newerHead.slice(0, 7)} since this run's commit ` +
+        `(${context.sha.slice(0, 7)}); the run for that commit updates the version PR, so this one leaves it alone.`,
+    );
+    return true;
+  };
+  if (await stale()) {
+    return {};
+  }
+
+  const pre = await readPreState(cwd);
+  const preState = pre?.mode === "pre" ? pre : undefined;
 
   await github.prepareBranch(versionBranch);
 
-  let versionsByDirectory = await getVersionsByDirectory(cwd);
+  const versionsBefore = new Map(
+    (await listPackages(cwd)).map((p) => [
+      `${p.ecosystem}:${p.dir}`,
+      p.version,
+    ]),
+  );
 
   const env = { ...process.env, GITHUB_TOKEN: github.getToken() };
 
   if (script) {
     await exec(script, undefined, { cwd, env });
   } else {
-    await execChangesetsCli(["version"], { cwd, env });
+    await execShiprig(["version", "--yes"], { cwd, env });
   }
 
-  let changedPackages = await getChangedPackages(cwd, versionsByDirectory);
+  let changedPackages = (await listPackages(cwd)).filter(
+    (p) => versionsBefore.get(`${p.ecosystem}:${p.dir}`) !== p.version,
+  );
   let changedPackagesInfoPromises = Promise.all(
     changedPackages.map(async (pkg) => {
-      let changelogContents = await fs.readFile(
-        path.join(pkg.dir, "CHANGELOG.md"),
-        "utf8",
+      let entry = getChangelogEntry(
+        (await readChangelog(pkg)) ?? "",
+        pkg.version,
       );
-
-      let entry = getChangelogEntry(changelogContents, pkg.packageJson.version);
       return {
         highestLevel: entry.highestLevel,
-        private: !!pkg.packageJson.private,
+        private: pkg.private,
         content: entry.content,
-        header: `## ${pkg.packageJson.name}@${pkg.packageJson.version}`,
+        header: `## ${pkg.name}@${pkg.version}`,
       };
     }),
   );
 
-  const finalPrTitle = `${prTitle}${!!preState ? ` (${preState.tag})` : ""}`;
-  const finalCommitMessage = `${commitMessage}${
-    !!preState ? ` (${preState.tag})` : ""
-  }`;
+  // A title or message the user set keeps upstream's prerelease suffix. The
+  // default names the versions instead, which already carry the tag
+  // (1.2.0-beta.0), so it needs none.
+  const preSuffix = preState ? ` (${preState.tag})` : "";
+  const defaultTitle = releaseTitle(changedPackages);
+  const finalPrTitle =
+    prTitle !== undefined ? `${prTitle}${preSuffix}` : defaultTitle;
+  const finalCommitMessage =
+    commitMessage !== undefined ? `${commitMessage}${preSuffix}` : defaultTitle;
 
   const existingPullRequests = await octokit.rest.pulls.list({
     ...context.repo,
@@ -408,6 +443,10 @@ export async function runVersion({
       2,
     )}`,
   );
+
+  if (await stale()) {
+    return {};
+  }
 
   await github.pushChanges({
     branch: versionBranch,
@@ -490,4 +529,101 @@ export async function runVersion({
       pullRequestNumber: pullRequest.number,
     };
   }
+}
+
+// The default version PR title and commit message: a conventional
+// "chore: release" naming what the PR releases, as release-please's titles do.
+//   one version for everything (a single package, or a fixed group):
+//     chore: release 1.2.0
+//   a few packages at different versions:
+//     chore: release core@1.2.0, ui@0.5.0
+//   more than that:
+//     chore: release 5 packages
+export function releaseTitle(
+  packages: { name: string; version: string }[],
+): string {
+  const base = "chore: release";
+  if (packages.length === 0) {
+    return base;
+  }
+  const versions = new Set(packages.map((p) => p.version));
+  if (versions.size === 1) {
+    return `${base} ${packages[0].version}`;
+  }
+  if (packages.length > 3) {
+    return `${base} ${packages.length} packages`;
+  }
+  // A short name two packages share (github.com/a/x/ui, github.com/b/y/ui)
+  // would name neither, so those two keep their full names.
+  const shortCount = new Map<string, number>();
+  for (const p of packages) {
+    const short = shortPackageName(p.name);
+    shortCount.set(short, (shortCount.get(short) ?? 0) + 1);
+  }
+  const named = packages
+    .map((p) => {
+      const short = shortPackageName(p.name);
+      return `${shortCount.get(short) === 1 ? short : p.name}@${p.version}`;
+    })
+    .sort();
+  return `${base} ${named.join(", ")}`;
+}
+
+// A scoped npm name reads as itself; a path-like one (a Go module, a Maven
+// group/artifact) by its last segment: github.com/acme/tool/ui -> ui.
+function shortPackageName(name: string): string {
+  if (name.startsWith("@")) {
+    return name;
+  }
+  return name.slice(name.lastIndexOf("/") + 1);
+}
+
+// Whether the publish path runs, once no changesets are pending. With
+// `version-pr-merge` a push publishes only when it's the version PR's merge,
+// a run started by hand (workflow_dispatch) always does, for a first release
+// or a retry, and any other event (a schedule, a pull request, workflow_run)
+// never does. `every-push` is changesets/action's behaviour: publish whatever
+// the event.
+export async function publishDecision({
+  github,
+  publishOn,
+  eventName,
+  base,
+}: {
+  github: Pick<GitHub, "isVersionPrMerge">;
+  publishOn: string;
+  eventName: string;
+  base: string;
+}): Promise<{ publish: boolean; reason: string }> {
+  if (publishOn !== "version-pr-merge" && publishOn !== "every-push") {
+    throw new Error(
+      `Invalid publish-on: ${publishOn} (expected "version-pr-merge" or "every-push")`,
+    );
+  }
+  if (publishOn === "every-push" || eventName === "workflow_dispatch") {
+    return {
+      publish: true,
+      reason:
+        "No changesets found. Attempting to publish any unpublished packages",
+    };
+  }
+  if (eventName !== "push") {
+    return {
+      publish: false,
+      reason: `Nothing to publish: a ${eventName} run doesn't publish with publish-on: version-pr-merge; only the version PR's merge or a run started by hand does.`,
+    };
+  }
+  const versionBranch = `changeset-release/${base}`;
+  if (await github.isVersionPrMerge(versionBranch, base)) {
+    return {
+      publish: true,
+      reason: `This push merges the version PR (${versionBranch}); publishing.`,
+    };
+  }
+  return {
+    publish: false,
+    reason:
+      `Nothing to publish: this push isn't the merge of the version PR (${versionBranch}). ` +
+      "To publish on every push, set publish-on: every-push; a workflow_dispatch run, if the workflow allows one, always publishes.",
+  };
 }
