@@ -336,8 +336,8 @@ export async function runVersion({
   script,
   github,
   cwd = process.cwd(),
-  prTitle = "Version Packages",
-  commitMessage = "Version Packages",
+  prTitle,
+  commitMessage,
   hasPublishScript = false,
   prBodyMaxCharacters = MAX_CHARACTERS_PER_MESSAGE,
   branch = context.ref.replace("refs/heads/", ""),
@@ -384,10 +384,15 @@ export async function runVersion({
     }),
   );
 
-  const finalPrTitle = `${prTitle}${!!preState ? ` (${preState.tag})` : ""}`;
-  const finalCommitMessage = `${commitMessage}${
-    !!preState ? ` (${preState.tag})` : ""
-  }`;
+  // A title or message the user set keeps upstream's prerelease suffix. The
+  // default names the versions instead, which already carry the tag
+  // (1.2.0-beta.0), so it needs none.
+  const preSuffix = preState ? ` (${preState.tag})` : "";
+  const defaultTitle = releaseTitle(changedPackages);
+  const finalPrTitle =
+    prTitle !== undefined ? `${prTitle}${preSuffix}` : defaultTitle;
+  const finalCommitMessage =
+    commitMessage !== undefined ? `${commitMessage}${preSuffix}` : defaultTitle;
 
   const existingPullRequests = await octokit.rest.pulls.list({
     ...context.repo,
@@ -484,4 +489,41 @@ export async function runVersion({
       pullRequestNumber: pullRequest.number,
     };
   }
+}
+
+// The default version PR title and commit message: a conventional
+// "chore: release" naming what the PR releases, as release-please's titles do.
+//   one version for everything (a single package, or a fixed group):
+//     chore: release 1.2.0
+//   a few packages at different versions:
+//     chore: release core@1.2.0, ui@0.5.0
+//   more than that:
+//     chore: release 5 packages
+export function releaseTitle(
+  packages: { name: string; version: string }[],
+): string {
+  const base = "chore: release";
+  if (packages.length === 0) {
+    return base;
+  }
+  const versions = new Set(packages.map((p) => p.version));
+  if (versions.size === 1) {
+    return `${base} ${packages[0].version}`;
+  }
+  if (packages.length > 3) {
+    return `${base} ${packages.length} packages`;
+  }
+  const named = packages
+    .map((p) => `${shortPackageName(p.name)}@${p.version}`)
+    .sort();
+  return `${base} ${named.join(", ")}`;
+}
+
+// A scoped npm name reads as itself; a path-like one (a Go module, a Maven
+// group/artifact) by its last segment: github.com/acme/tool/ui -> ui.
+function shortPackageName(name: string): string {
+  if (name.startsWith("@")) {
+    return name;
+  }
+  return name.slice(name.lastIndexOf("/") + 1);
 }

@@ -2,12 +2,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import * as core from "@actions/core";
 import * as github from "@actions/github";
+import { commitChangesSinceBase } from "@changesets/ghcommit";
 import type { Changeset } from "@changesets/types";
 import { writeChangeset } from "@changesets/write";
 import { exec } from "tinyexec";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GitHub } from "./github.ts";
-import { runPublish, runVersion } from "./run.ts";
+import { releaseTitle, runPublish, runVersion } from "./run.ts";
 import { gitdir } from "./test-utils.ts";
 
 vi.mock("@actions/github", () => ({
@@ -218,6 +219,79 @@ describe("version", () => {
     });
 
     expect(mockedGithubMethods.pulls.create.mock.calls[0]).toMatchSnapshot();
+  });
+
+  it("keeps a title and commit message the user set, with the prerelease suffix", async () => {
+    await using fixture = await createSimpleProjectFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    await fs.writeFile(
+      path.join(cwd, ".changeset", "pre.json"),
+      JSON.stringify({ mode: "pre", tag: "beta" }),
+    );
+    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({ data: [] }));
+    mockedGithubMethods.pulls.create.mockImplementationOnce(() => ({
+      data: { number: 123 },
+    }));
+    await writeChangesets(
+      [
+        {
+          releases: [
+            { name: "changesets-dev-simple-project-pkg-a", type: "minor" },
+          ],
+          summary: "Awesome feature",
+        },
+      ],
+      cwd,
+    );
+
+    await runVersion({
+      github: createGithub(cwd),
+      cwd,
+      prTitle: "Release it",
+      commitMessage: "Ship it",
+    });
+
+    expect(mockedGithubMethods.pulls.create.mock.calls[0][0].title).toBe(
+      "Release it (beta)",
+    );
+    expect(vi.mocked(commitChangesSinceBase).mock.calls[0][0].message).toBe(
+      "Ship it (beta)",
+    );
+  });
+
+  it("names the prerelease version in the default title, with no suffix", async () => {
+    await using fixture = await createSimpleProjectFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    await fs.writeFile(
+      path.join(cwd, ".changeset", "pre.json"),
+      JSON.stringify({ mode: "pre", tag: "beta" }),
+    );
+    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({ data: [] }));
+    mockedGithubMethods.pulls.create.mockImplementationOnce(() => ({
+      data: { number: 123 },
+    }));
+    await writeChangesets(
+      [
+        {
+          releases: [
+            { name: "changesets-dev-simple-project-pkg-a", type: "minor" },
+          ],
+          summary: "Awesome feature",
+        },
+      ],
+      cwd,
+    );
+
+    await runVersion({ github: createGithub(cwd), cwd });
+
+    const title: string =
+      mockedGithubMethods.pulls.create.mock.calls[0][0].title;
+    expect(title).toMatch(/^chore: release 1\.1\.0-beta\.\d+$/);
+    expect(vi.mocked(commitChangesSinceBase).mock.calls[0][0].message).toBe(
+      title,
+    );
   });
 
   it('creates a draft PR when prDraft is "create"', async () => {
@@ -557,6 +631,13 @@ describe("polyglot", () => {
     const result = await runVersion({ github: createGithub(cwd), cwd });
 
     expect(result).toEqual({ pullRequestNumber: 7 });
+    // Two packages at different versions: each named, in the title and the
+    // commit alike.
+    const title = "chore: release crate-b@0.3.1, pkg-a@1.1.0";
+    expect(mockedGithubMethods.pulls.create.mock.calls[0][0].title).toBe(title);
+    expect(vi.mocked(commitChangesSinceBase).mock.calls[0][0].message).toBe(
+      title,
+    );
     const body: string = mockedGithubMethods.pulls.create.mock.calls[0][0].body;
     expect(body).toContain("## pkg-a@1.1.0");
     expect(body).toContain("## crate-b@0.3.1");
@@ -600,5 +681,41 @@ describe("polyglot", () => {
         ["crate-b@0.3.0", "### Minor Changes\n\n- Rust first release"],
       ]),
     );
+  });
+});
+
+describe("releaseTitle", () => {
+  it("names one shared version once", () => {
+    expect(releaseTitle([{ name: "tool", version: "1.2.0" }])).toBe(
+      "chore: release 1.2.0",
+    );
+    expect(
+      releaseTitle([
+        { name: "@acme/core", version: "2.0.0" },
+        { name: "@acme/cli", version: "2.0.0" },
+      ]),
+    ).toBe("chore: release 2.0.0");
+  });
+
+  it("names up to three packages at different versions, sorted, with short names", () => {
+    expect(
+      releaseTitle([
+        { name: "github.com/acme/tool/ui", version: "0.5.0" },
+        { name: "github.com/acme/tool", version: "1.2.0" },
+        { name: "@acme/cli", version: "3.0.0" },
+      ]),
+    ).toBe("chore: release @acme/cli@3.0.0, tool@1.2.0, ui@0.5.0");
+  });
+
+  it("counts more than three", () => {
+    expect(
+      releaseTitle(
+        ["a", "b", "c", "d"].map((name, i) => ({ name, version: `1.${i}.0` })),
+      ),
+    ).toBe("chore: release 4 packages");
+  });
+
+  it("falls back to the bare prefix when nothing changed", () => {
+    expect(releaseTitle([])).toBe("chore: release");
   });
 });

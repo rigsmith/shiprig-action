@@ -17,7 +17,7 @@ exports[`version > creates a draft PR when prDraft is "create" 1`] = `
     "head": "changeset-release/some-branch",
     "owner": "changesets",
     "repo": "action",
-    "title": "Version Packages",
+    "title": "chore: release 1.1.0",
   },
 ]
 `;
@@ -49,7 +49,7 @@ exports[`version > creates simple PR 1`] = `
     "head": "changeset-release/some-branch",
     "owner": "changesets",
     "repo": "action",
-    "title": "Version Packages",
+    "title": "chore: release 1.1.0",
   },
 ]
 `;
@@ -68,7 +68,7 @@ exports[`version > does not include any release information if a message with si
     "head": "changeset-release/some-branch",
     "owner": "changesets",
     "repo": "action",
-    "title": "Version Packages",
+    "title": "chore: release 1.1.0",
   },
 ]
 `;
@@ -91,7 +91,7 @@ exports[`version > does not include changelog entries if full message exceeds si
     "head": "changeset-release/some-branch",
     "owner": "changesets",
     "repo": "action",
-    "title": "Version Packages",
+    "title": "chore: release 1.1.0",
   },
 ]
 `;
@@ -113,7 +113,7 @@ exports[`version > doesn't include ignored package that got a dependency update 
     "head": "changeset-release/some-branch",
     "owner": "changesets",
     "repo": "action",
-    "title": "Version Packages",
+    "title": "chore: release 1.1.0",
   },
 ]
 `;
@@ -135,7 +135,7 @@ exports[`version > only includes bumped packages in the PR body 1`] = `
     "head": "changeset-release/some-branch",
     "owner": "changesets",
     "repo": "action",
-    "title": "Version Packages",
+    "title": "chore: release 1.1.0",
   },
 ]
 `;
@@ -184,7 +184,7 @@ exports[`version > updates an existing PR via GraphQL and converts it to draft w
 
 - Awesome feature",
     "pullRequestId": "PR_kwDOA",
-    "title": "Version Packages",
+    "title": "chore: release 1.1.0",
   },
 ]
 `;
@@ -224,7 +224,7 @@ exports[`version > updates an existing PR via GraphQL without converting it to d
 
 - Awesome feature",
     "pullRequestId": "PR_kwDOA",
-    "title": "Version Packages",
+    "title": "chore: release 1.1.0",
   },
 ]
 `;
