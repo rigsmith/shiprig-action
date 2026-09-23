@@ -1,0 +1,23 @@
+.github/workflows/ci.yml
+  s_df06cc81ca93a0::t_2232e9b195412e 51
+src/test-setup-shiprig.ts
+  ai_agent 3-4,8-10
+.github/actions/ci-setup/action.yml
+  s_df06cc81ca93a0::t_2232e9b195412e 31-34,39-40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "dec2561fa9764f2585fcade0d751528dbaa910d1",
+  "prompts": {},
+  "sessions": {
+    "s_df06cc81ca93a0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea084e0d-e516-4120-9276-01a2c9e861f3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "John Campion Jr <john@brightshore.io>"
+    }
+  }
+}
