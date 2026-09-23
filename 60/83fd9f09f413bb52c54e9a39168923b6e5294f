@@ -1,0 +1,26 @@
+src/config.test.ts
+  s_505a2cfce9114c::t_0afceec64b5041 86-89,135-142
+  ai_agent 203,213-216
+schema/shiprig-action.json
+  s_505a2cfce9114c::t_0afceec64b5041 5,10-11,15,20,29
+src/config.ts
+  s_505a2cfce9114c::t_0afceec64b5041 5,42-44,53,109-121,143-147
+src/shiprig.ts
+  s_505a2cfce9114c::t_0afceec64b5041 276
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "6083fd9f09f413bb52c54e9a39168923b6e5294f",
+  "prompts": {},
+  "sessions": {
+    "s_505a2cfce9114c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26f83a80-3cb9-404d-829c-6b4925947f16",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "John Campion Jr <john@brightshore.io>"
+    }
+  }
+}
