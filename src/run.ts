@@ -360,12 +360,18 @@ export async function runVersion({
   // a newer one would reset the version branch to its older commit, or reopen
   // a version PR that was just merged. If the base has moved past this run's
   // commit, the newer run owns the version PR, so this one leaves it alone.
-  const newerHead = await github.baseMovedPast(branch, context.sha);
-  if (newerHead !== undefined) {
+  // Checked before any work, and again just before the push, since the base
+  // can move while this run is versioning.
+  const stale = async () => {
+    const newerHead = await github.baseMovedPast(branch, context.sha);
+    if (newerHead === undefined) return false;
     core.info(
       `${branch} has moved on to ${newerHead.slice(0, 7)} since this run's commit ` +
         `(${context.sha.slice(0, 7)}); the run for that commit updates the version PR, so this one leaves it alone.`,
     );
+    return true;
+  };
+  if (await stale()) {
     return {};
   }
 
@@ -430,6 +436,10 @@ export async function runVersion({
       2,
     )}`,
   );
+
+  if (await stale()) {
+    return {};
+  }
 
   await github.pushChanges({
     branch: versionBranch,

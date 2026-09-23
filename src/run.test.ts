@@ -431,6 +431,38 @@ describe("version", () => {
     ).toBe(headBefore);
   });
 
+  it("leaves the version PR alone when the base moves on while it versions", async () => {
+    await using fixture = await createSimpleProjectFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({ data: [] }));
+    mockedGithubMethods.git.getRef
+      .mockImplementationOnce(() =>
+        Promise.resolve({ data: { object: { sha: github.context.sha } } }),
+      )
+      .mockImplementationOnce(() =>
+        Promise.resolve({ data: { object: { sha: "a-newer-commit" } } }),
+      );
+    await writeChangesets(
+      [
+        {
+          releases: [
+            { name: "changesets-dev-simple-project-pkg-a", type: "minor" },
+          ],
+          summary: "Awesome feature",
+        },
+      ],
+      cwd,
+    );
+
+    const result = await runVersion({ github: createGithub(cwd), cwd });
+
+    expect(result).toEqual({});
+    expect(mockedGithubMethods.git.getRef).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(commitChangesSinceBase)).not.toHaveBeenCalled();
+    expect(mockedGithubMethods.pulls.create).not.toHaveBeenCalled();
+  });
+
   it('creates a draft PR when prDraft is "create"', async () => {
     await using fixture = await createSimpleProjectFixture();
     const cwd = fixture.path;

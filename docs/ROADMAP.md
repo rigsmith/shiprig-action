@@ -33,9 +33,11 @@ version-pr-merge`, the default, publishes on the push that merges
   workflows queue their runs (`queue: max`, up to 100) and GitHub doesn't
   guarantee the order they start in. Before touching
   `changeset-release/<base>`, the action checks the base still points at the
-  run's commit; if it has moved on, the newer run owns the version PR. The
-  publish path is unaffected: a merge run publishes its own commit whenever it
-  runs.
+  run's commit (and again just before pushing, since it can move during the
+  run); if it has moved on, the newer run owns the version PR. The publish path
+  is unaffected: a merge run with nothing left pending publishes its own commit
+  whenever it runs (a pending changeset sends it down the version path
+  instead).
 - **4. No approval step on the version PR's CI.** Both this repository and
   rigsmith run the action as the shipRig GitHub App, so version PRs come from
   `shiprig[bot]` and their CI starts on its own.
