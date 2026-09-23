@@ -1,5 +1,15 @@
 # shiprig-action
 
+## 0.4.0
+
+### Minor Changes
+
+- [#21](https://github.com/rigsmith/shiprig-action/pull/21) [`1f7317a`](https://github.com/rigsmith/shiprig-action/commit/1f7317a) Thanks [@JohnCampionJr](https://github.com/JohnCampionJr)! - Settings can live in a committed `shiprig-action.jsonc` (or `.json`) in `.github/`, `.changeset/` or the working directory: `prTitle`, `commitMessage`, `prDraft`, `prBaseBranch`, `publishOn`, `createGithubReleases`, `pushGitTags` and `pushWithGitCli`, each standing in for the input of the same name. An input set in the workflow wins over the file, and the file over the default. Unknown keys and wrong types fail the run; a JSON schema is in `schema/shiprig-action.json`.
+
+### Patch Changes
+
+- [#19](https://github.com/rigsmith/shiprig-action/pull/19) [`ad4e81a`](https://github.com/rigsmith/shiprig-action/commit/ad4e81a) Thanks [@JohnCampionJr](https://github.com/JohnCampionJr)! - A run whose commit the base branch has already moved past no longer touches the version PR, so a queued run that starts after a newer one can't reset `changeset-release/<base>` to older changes or reopen a version PR that was just merged. The "Nothing to publish" message no longer suggests starting the workflow by hand to workflows that can't be.
+
 ## 0.3.0
 
 ### Minor Changes
