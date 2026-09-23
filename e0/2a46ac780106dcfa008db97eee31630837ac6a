@@ -1,0 +1,13 @@
+.changeset/stale-run-guard.md
+  ai_agent 1-5
+README.md
+  ai_agent 94-97
+docs/ROADMAP.md
+  ai_agent 32-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "e02a46ac780106dcfa008db97eee31630837ac6a",
+  "prompts": {}
+}
