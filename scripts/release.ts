@@ -13,6 +13,14 @@ import pkgJson from "../package.json" with { type: "json" };
 const tag = `v${pkgJson.version}`;
 const releaseLine = `v${pkgJson.version.split(".")[0]}`;
 const isPrerelease = pkgJson.version.includes("-");
+
+// Open the events file first thing, as canon's `changeset publish` does: an
+// empty file is how the action learns there's nothing to release. Left
+// missing (every run where this version is already out), the action warns
+// that it can't read the output.
+if (process.env.CHANGESETS_OUTPUT) {
+  fs.closeSync(fs.openSync(process.env.CHANGESETS_OUTPUT, "a"));
+}
 // GITHUB_TOKEN is the action's github-token: it only reads the GitHub release.
 // The git pushes below use RELEASE_GIT_TOKEN, a shipRig App token that can
 // also write workflow files (release.yml mints it): GitHub refuses to move vN
