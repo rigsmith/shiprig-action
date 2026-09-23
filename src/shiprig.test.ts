@@ -3,6 +3,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   hasChangesetFiles,
+  listPackages,
   readChangelog,
   readPreState,
   readReleasePlan,
@@ -57,6 +58,73 @@ describe("readReleasePlan", () => {
     vi.stubEnv("SHIPRIG_BIN", path.join(fixture.path, "fake-shiprig"));
     await expect(readReleasePlan(fixture.path)).rejects.toThrow(
       /shiprig status.*exited with code 1[\s\S]*boom/,
+    );
+  });
+});
+
+describe("listPackages fails closed", () => {
+  async function withPackagesJson(json: unknown) {
+    const fixture = await workspace({
+      "fake-shiprig": `#!/bin/sh\ncat <<'EOF'\n${JSON.stringify(json)}\nEOF\n`,
+    });
+    await fs.chmod(path.join(fixture.path, "fake-shiprig"), 0o755);
+    vi.stubEnv("SHIPRIG_BIN", path.join(fixture.path, "fake-shiprig"));
+    return fixture;
+  }
+  const good = {
+    name: "pkg-a",
+    version: "1.0.0",
+    ecosystem: "npm",
+    dir: "packages/pkg-a",
+    changelog: "packages/pkg-a/CHANGELOG.md",
+    private: false,
+    ignored: false,
+  };
+
+  it("reads a well-formed list", async () => {
+    await using fixture = await withPackagesJson({ packages: [good] });
+    const [pkg] = await listPackages(fixture.path);
+    expect(pkg.name).toBe("pkg-a");
+    expect(pkg.dir).toBe(path.join(fixture.path, "packages/pkg-a"));
+  });
+
+  it.each(["name", "version", "ecosystem", "dir", "changelog"])(
+    "throws on a package with an empty %s",
+    async (field) => {
+      await using fixture = await withPackagesJson({
+        packages: [{ ...good, [field]: "" }],
+      });
+      await expect(listPackages(fixture.path)).rejects.toThrow(
+        `reported a package with no ${field}`,
+      );
+    },
+  );
+
+  it("throws on a whitespace-only version", async () => {
+    await using fixture = await withPackagesJson({
+      packages: [{ ...good, version: "   " }],
+    });
+    await expect(listPackages(fixture.path)).rejects.toThrow(
+      "reported a package with no version",
+    );
+  });
+
+  it.each(["private", "ignored"])(
+    "throws when %s isn't a boolean",
+    async (field) => {
+      await using fixture = await withPackagesJson({
+        packages: [{ ...good, [field]: "false" }],
+      });
+      await expect(listPackages(fixture.path)).rejects.toThrow(
+        `whose ${field} isn't true or false`,
+      );
+    },
+  );
+
+  it("throws when there is no packages list", async () => {
+    await using fixture = await withPackagesJson({ pkgs: [] });
+    await expect(listPackages(fixture.path)).rejects.toThrow(
+      /no "packages" list/,
     );
   });
 });

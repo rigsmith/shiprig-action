@@ -8,7 +8,7 @@ shiprig-action releases itself, with itself (`.github/workflows/release.yml`).
    Packages** PR: `pnpm bump` runs `shiprig version` (bumps `package.json`,
    writes `CHANGELOG.md`) and points the READMEs' `@vN` examples at the release
    line.
-3. **Merge the Version Packages PR.** The workflow runs `pnpm release`, which:
+3. **Merge the version PR** (`chore: release <version>`). The workflow runs `pnpm release`, which:
    - does nothing if this version's tag is already on the remote, so a push
      without a new version never moves the release line;
    - commits the built `dist/` on a detached release commit;

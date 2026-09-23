@@ -19,8 +19,8 @@ async function main() {
 
   const githubToken = getRequiredInput("github-token");
   const script = getOptionalInput("script");
-  const commitMessage = getRequiredInput("commit-message");
-  const prTitle = getRequiredInput("pr-title");
+  const commitMessage = getOptionalInput("commit-message");
+  const prTitle = getOptionalInput("pr-title");
   const prDraft = getOptionalInput("pr-draft");
   const prBaseBranch = getOptionalInput("pr-base-branch");
   const pushWithGitCli = core.getBooleanInput("push-with-git-cli");

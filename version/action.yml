@@ -14,13 +14,15 @@ inputs:
     description: "The command to use to version packages"
     required: false
   commit-message:
-    description: "The commit message. Default to `Version Packages`"
+    description: "The commit message. Defaults to the pull request's default title."
     required: false
-    default: "Version Packages"
   pr-title:
-    description: "The pull request title. Default to `Version Packages`"
+    description: >
+      The pull request title. Defaults to `chore: release` plus what it releases:
+      `chore: release 1.2.0` when everything shares one version,
+      `chore: release core@1.2.0, ui@0.5.0` for up to three packages, and
+      `chore: release 5 packages` beyond that.
     required: false
-    default: "Version Packages"
   pr-draft:
     description: "Controls draft PR behavior. Use 'create' to create new version PRs as draft, or 'always' to also convert existing version PRs back to draft when updating them."
     required: false
