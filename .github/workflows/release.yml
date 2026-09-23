@@ -4,6 +4,14 @@
 # that PR has merged, runs `pnpm release`: dist/ committed on a release commit,
 # tagged vX.Y.Z, the vN branch moved to it, and a GitHub release created from
 # the changelog. Users take the action from a tag or vN, never main.
+#
+# The action acts as the shipRig GitHub App (org variable
+# SHIPRIG_APP_CLIENT_ID, org secret SHIPRIG_APP_PRIVATE_KEY), so the version PR
+# it opens gets its CI without "Approve workflows to run". The release script's
+# git pushes (release commit, tag, vN) use a second App token, passed as
+# RELEASE_GIT_TOKEN, that can also write workflow files: moving vN across
+# commits that change .github/workflows needs that, and the job's own
+# GITHUB_TOKEN can't have it. The action's token doesn't get it.
 name: Release
 
 on:
@@ -11,9 +19,13 @@ on:
     branches:
       - main
 
+# Never cancelled, and a waiting run isn't replaced by a newer push (queue:
+# max, up to 100 waiting): a replaced run could be the version PR's merge,
+# whose release would then never happen.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
+  queue: max
 
 permissions: {}
 
@@ -23,9 +35,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
-      contents: write # version commits, the release commit, tag and vN branch, GitHub releases
-      pull-requests: write # the version PR
+      contents: read # every write goes through a shipRig App token
     steps:
+      - name: Get a shipRig App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.SHIPRIG_APP_CLIENT_ID }}
+          private-key: ${{ secrets.SHIPRIG_APP_PRIVATE_KEY }}
+          permission-contents: write # the version PR branch, GitHub releases
+          permission-pull-requests: write # open and update the version PR
+
+      - name: Get a shipRig App token for the release pushes
+        id: push-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.SHIPRIG_APP_CLIENT_ID }}
+          private-key: ${{ secrets.SHIPRIG_APP_PRIVATE_KEY }}
+          permission-contents: write # the release commit, tag and vN branch
+          permission-workflows: write # vN moves across workflow-file changes on main
+
       - uses: $/.github/actions/ci-setup
         with:
           skip-cache: true # avoid cache poisoning attacks
@@ -39,6 +68,10 @@ jobs:
           # The lockfile-pinned shiprig (devDependency), for the action itself;
           # the scripts find it on PATH through pnpm.
           SHIPRIG_BIN: ${{ github.workspace }}/node_modules/.bin/shiprig
+          # scripts/release.ts pushes the release commit, tag and vN with this,
+          # not the token the action passes it as GITHUB_TOKEN.
+          RELEASE_GIT_TOKEN: ${{ steps.push-token.outputs.token }}
         with:
+          github-token: ${{ steps.app-token.outputs.token }}
           version-script: pnpm bump
           publish-script: pnpm release

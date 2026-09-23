@@ -91,6 +91,19 @@ A PR opened with `GITHUB_TOKEN` gets its CI runs held for approval ("Approve
 workflows to run"). A GitHub App token avoids that, and stage 2 needs one
 anyway. Workflow-only; document it in the README's custom-token section.
 
+### 4b. Don't let a stale run rewrite the version PR
+
+Release workflows run with `queue: max`, so pushes to main queue rather than
+replace each other: up to 100 can wait, and GitHub cancels any beyond that. A
+burst that large could still drop a merge run; re-running it releases, since
+the release path is idempotent. Runs start first in, first out, but GitHub
+doesn't guarantee the order, so an older run could reach the version path
+after a newer one and reset `changeset-release/<base>` to its older commit,
+or reopen a version PR that was just merged. The action should skip the
+version-PR update when the base branch has moved past `github.sha` (a newer
+run owns that), while still taking the publish path, which is right for any
+commit.
+
 ## Later
 
 ### 5. Non-interactive version override (D)

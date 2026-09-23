@@ -13,17 +13,35 @@ import pkgJson from "../package.json" with { type: "json" };
 const tag = `v${pkgJson.version}`;
 const releaseLine = `v${pkgJson.version.split(".")[0]}`;
 const isPrerelease = pkgJson.version.includes("-");
+// GITHUB_TOKEN is the action's github-token: it only reads the GitHub release.
+// The git pushes below use RELEASE_GIT_TOKEN, a shipRig App token that can
+// also write workflow files (release.yml mints it): GitHub refuses to move vN
+// across commits that change .github/workflows without that permission, which
+// neither the action's token nor the job's GITHUB_TOKEN has.
 const githubToken = process.env.GITHUB_TOKEN;
 if (!githubToken) {
   throw new Error("GITHUB_TOKEN is required");
 }
-const basic = Buffer.from(`x-access-token:${githubToken}`).toString("base64");
-const gitEnv = {
-  ...process.env,
-  GIT_CONFIG_COUNT: "1",
-  GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader",
-  GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${basic}`,
-};
+// Git auth for a token; the push token is required only once a push is due,
+// so the recovery path below (tag already pushed) runs without it.
+function gitEnvFor(token: string) {
+  const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
+  return {
+    ...process.env,
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader",
+    GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${basic}`,
+  };
+}
+function pushEnv() {
+  const gitToken = process.env.RELEASE_GIT_TOKEN;
+  if (!gitToken) {
+    throw new Error(
+      "RELEASE_GIT_TOKEN is required to push a release: a token that can push contents and workflow files",
+    );
+  }
+  return gitEnvFor(gitToken);
+}
 
 process.chdir(path.join(import.meta.dirname, ".."));
 
@@ -74,7 +92,7 @@ async function hasGitHubRelease(): Promise<boolean> {
 const existing = await getExecOutput(
   "git",
   ["ls-remote", "--tags", "origin", `refs/tags/${tag}`],
-  { env: gitEnv, silent: true },
+  { env: gitEnvFor(githubToken), silent: true },
 );
 if (existing.stdout.trim() !== "") {
   if (await hasGitHubRelease()) {
@@ -87,6 +105,8 @@ if (existing.stdout.trim() !== "") {
   }
   process.exit(0);
 }
+
+const gitEnv = pushEnv();
 
 await exec("git", ["checkout", "--detach"]);
 await exec("git", ["add", "--force", "dist"]);
