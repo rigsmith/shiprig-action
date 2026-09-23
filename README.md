@@ -91,9 +91,10 @@ somewhere, or the action won't know what was released. A tag the script already
 pushed itself is left as it is; a tag the action can't push fails the run,
 since nothing would release it.
 
-**Stale runs.** If the base branch has moved past a run's commit by the time
-the run starts (queued runs don't always start in order), the run leaves the
-version PR alone: the run for the newer commit updates it.
+**Stale runs.** If the branch a run is on has moved past the run's commit by
+the time it starts, or by the time it would push (queued runs don't always
+start in order), the run leaves the version PR alone: the run for the newer
+commit updates it.
 
 **When it publishes.** By default (`publish-on: version-pr-merge`) the publish
 path runs only on the push that merges the version PR (a merged PR from this
