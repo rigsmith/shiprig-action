@@ -46,6 +46,13 @@ let mockedGithubMethods = {
   repos: {
     createRelease: vi.fn(),
   },
+  git: {
+    // The base branch still points at this run's commit unless a test says
+    // otherwise.
+    getRef: vi.fn(() =>
+      Promise.resolve({ data: { object: { sha: github.context.sha } } }),
+    ),
+  },
 };
 let mockedGraphql = vi.fn();
 
@@ -379,6 +386,49 @@ describe("version", () => {
     expect(vi.mocked(commitChangesSinceBase).mock.calls[0][0].message).toBe(
       title,
     );
+  });
+
+  it("leaves the version PR alone when the base has moved past the run's commit", async () => {
+    await using fixture = await createSimpleProjectFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    mockedGithubMethods.git.getRef.mockImplementationOnce(() =>
+      Promise.resolve({ data: { object: { sha: "a-newer-commit" } } }),
+    );
+    await writeChangesets(
+      [
+        {
+          releases: [
+            { name: "changesets-dev-simple-project-pkg-a", type: "minor" },
+          ],
+          summary: "Awesome feature",
+        },
+      ],
+      cwd,
+    );
+    const headBefore = (
+      await exec("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+        nodeOptions: { cwd },
+      })
+    ).stdout.trim();
+
+    const result = await runVersion({ github: createGithub(cwd), cwd });
+
+    expect(result).toEqual({});
+    expect(mockedGithubMethods.git.getRef).toHaveBeenCalledWith(
+      expect.objectContaining({ ref: "heads/some-branch" }),
+    );
+    expect(mockedGithubMethods.pulls.list).not.toHaveBeenCalled();
+    expect(mockedGithubMethods.pulls.create).not.toHaveBeenCalled();
+    expect(vi.mocked(commitChangesSinceBase)).not.toHaveBeenCalled();
+    // Not even switched to the version branch.
+    expect(
+      (
+        await exec("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+          nodeOptions: { cwd },
+        })
+      ).stdout.trim(),
+    ).toBe(headBefore);
   });
 
   it('creates a draft PR when prDraft is "create"', async () => {
@@ -848,6 +898,7 @@ describe("publishDecision", () => {
     });
     expect(d).toMatchObject({ publish: false });
     expect(d.reason).toContain("isn't the merge of the version PR");
+    expect(d.reason).toContain("if the workflow allows one");
   });
 
   it("always publishes a run started by hand", async () => {

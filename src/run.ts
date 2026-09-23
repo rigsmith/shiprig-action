@@ -337,7 +337,8 @@ type VersionOptions = {
 };
 
 type RunVersionResult = {
-  pullRequestNumber: number;
+  // Undefined when the run was stale and left the version PR alone.
+  pullRequestNumber?: number;
 };
 
 export async function runVersion({
@@ -353,6 +354,20 @@ export async function runVersion({
 }: VersionOptions): Promise<RunVersionResult> {
   const { octokit } = github;
   let versionBranch = `changeset-release/${branch}`;
+
+  // Release workflows queue their runs (queue: max) rather than drop them, and
+  // GitHub doesn't guarantee the order they start in. A run that starts after
+  // a newer one would reset the version branch to its older commit, or reopen
+  // a version PR that was just merged. If the base has moved past this run's
+  // commit, the newer run owns the version PR, so this one leaves it alone.
+  const newerHead = await github.baseMovedPast(branch, context.sha);
+  if (newerHead !== undefined) {
+    core.info(
+      `${branch} has moved on to ${newerHead.slice(0, 7)} since this run's commit ` +
+        `(${context.sha.slice(0, 7)}); the run for that commit updates the version PR, so this one leaves it alone.`,
+    );
+    return {};
+  }
 
   const pre = await readPreState(cwd);
   const preState = pre?.mode === "pre" ? pre : undefined;
@@ -592,6 +607,6 @@ export async function publishDecision({
     publish: false,
     reason:
       `Nothing to publish: this push isn't the merge of the version PR (${versionBranch}). ` +
-      "Set publish-on: every-push to publish on every push, or start the workflow by hand to publish now.",
+      "To publish on every push, set publish-on: every-push; a workflow_dispatch run, if the workflow allows one, always publishes.",
   };
 }

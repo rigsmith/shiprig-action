@@ -334,3 +334,34 @@ describe("isVersionPrMerge", () => {
     ).toBe(false);
   });
 });
+
+describe("baseMovedPast", () => {
+  function withHead(getRef: () => Promise<unknown>) {
+    return withOctokit(new GitHub({ cwd: ".", githubToken: "t" }), {
+      git: { getRef },
+    });
+  }
+
+  it("is undefined while the base still points at the commit", async () => {
+    const github = withHead(() =>
+      Promise.resolve({ data: { object: { sha: "abc" } } }),
+    );
+    expect(await github.baseMovedPast("main", "abc")).toBeUndefined();
+  });
+
+  it("names the newer commit once the base has moved on", async () => {
+    const github = withHead(() =>
+      Promise.resolve({ data: { object: { sha: "def" } } }),
+    );
+    expect(await github.baseMovedPast("main", "abc")).toBe("def");
+  });
+
+  it("throws when the base can't be read, rather than guessing", async () => {
+    const github = withHead(() =>
+      Promise.reject(Object.assign(new Error("Not Found"), { status: 404 })),
+    );
+    await expect(github.baseMovedPast("main", "abc")).rejects.toThrow(
+      "Not Found",
+    );
+  });
+});

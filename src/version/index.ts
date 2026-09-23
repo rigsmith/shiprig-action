@@ -47,5 +47,7 @@ async function main() {
     branch: prBaseBranch,
   });
 
-  core.setOutput("pr-number", String(pullRequestNumber));
+  if (pullRequestNumber !== undefined) {
+    core.setOutput("pr-number", String(pullRequestNumber));
+  }
 }
