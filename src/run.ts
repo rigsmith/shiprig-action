@@ -10,20 +10,17 @@ import {
   type ExecOutput,
 } from "@actions/exec";
 import { context } from "@actions/github";
-import type { PreState } from "@changesets/types";
-import { type Package, getPackages } from "@manypkg/get-packages";
 import type { GitHub } from "./github.ts";
 import type { Octokit } from "./octokit.ts";
-import readChangesetState from "./readChangesetState.ts";
 import {
-  execChangesetsCli,
-  getChangedPackages,
-  getChangelogEntry,
-  getExecOutputChangesetsCli,
-  getVersionsByDirectory,
-  isErrorWithCode,
-  sortTheThings,
-} from "./utils.ts";
+  execShiprig,
+  getExecOutputShiprig,
+  listPackages,
+  readChangelog,
+  readPreState,
+  type ShiprigPackage,
+} from "./shiprig.ts";
+import { getChangelogEntry, sortTheThings } from "./utils.ts";
 
 // GitHub Issues/PRs messages have a max size limit on the
 // message body payload.
@@ -33,24 +30,19 @@ const MAX_CHARACTERS_PER_MESSAGE = 60000;
 
 const createRelease = async (
   octokit: Octokit,
-  { pkg, tagName }: { pkg: Package; tagName: string },
+  { pkg, tagName }: { pkg: ShiprigPackage; tagName: string },
 ) => {
-  let changelog;
-  try {
-    changelog = await fs.readFile(path.join(pkg.dir, "CHANGELOG.md"), "utf8");
-  } catch (err) {
-    if (isErrorWithCode(err, "ENOENT")) {
-      // if we can't find a changelog, the user has probably disabled changelogs
-      return;
-    }
-    throw err;
+  const changelog = await readChangelog(pkg);
+  if (changelog === undefined) {
+    // if we can't find a changelog, the user has probably disabled changelogs
+    return;
   }
-  let changelogEntry = getChangelogEntry(changelog, pkg.packageJson.version);
+  let changelogEntry = getChangelogEntry(changelog, pkg.version);
   if (!changelogEntry) {
     // we can find a changelog but not the entry for this version
     // if this is true, something has probably gone wrong
     throw new Error(
-      `Could not find changelog entry for ${pkg.packageJson.name}@${pkg.packageJson.version}`,
+      `Could not find changelog entry for ${pkg.name}@${pkg.version}`,
     );
   }
 
@@ -58,7 +50,7 @@ const createRelease = async (
     name: tagName,
     tag_name: tagName,
     body: changelogEntry.content,
-    prerelease: pkg.packageJson.version.includes("-"),
+    prerelease: pkg.version.includes("-"),
     ...context.repo,
   });
 };
@@ -190,18 +182,21 @@ export async function runPublish({
       execOptions,
     );
   } else {
-    const args = ["publish"];
     if (fromPackDir) {
-      args.push("--from-pack-dir", fromPackDir);
+      // `changeset publish --from-pack-dir` has no shiprig equivalent yet
+      // (the split pack/publish sub-actions are phase 4 in docs/DESIGN.md).
+      throw new Error(
+        "Publishing from a pack directory isn't supported by shiprig-action yet.",
+      );
     }
-    changesetPublishOutput = await getExecOutputChangesetsCli(
-      args,
+    changesetPublishOutput = await getExecOutputShiprig(
+      ["publish", "--yes"],
       execOptions,
     );
   }
 
-  let { packages, tool } = await getPackages(cwd);
-  let packagesByName = new Map(packages.map((x) => [x.packageJson.name, x]));
+  let packages = await listPackages(cwd);
+  let packagesByName = new Map(packages.map((x) => [x.name, x]));
   let output: ChangesetsOutputEvent[];
   try {
     output = await readChangesetsOutput(outputFile);
@@ -210,7 +205,7 @@ export async function runPublish({
       throw err;
     }
     core.warning(
-      `${err.message}. GitHub releases and git tags cannot be created without this output. Ensure the custom publish script passes CHANGESETS_OUTPUT to the Changesets CLI.`,
+      `${err.message}. GitHub releases and git tags cannot be created without this output. Ensure the custom publish script runs \`shiprig publish\` (or \`shiprig tag\`) with CHANGESETS_OUTPUT in its environment.`,
     );
     output = [];
   }
@@ -224,13 +219,6 @@ export async function runPublish({
     }
     return { pkg, tag: event.tag };
   });
-
-  if (tool.type === "root" && packages.length === 0) {
-    throw new Error(
-      `No package found.` +
-        "This is probably a bug in the action, please open an issue",
-    );
-  }
 
   if (createGithubReleases || pushGitTags) {
     await Promise.all(
@@ -249,8 +237,8 @@ export async function runPublish({
     return {
       published: true,
       publishedPackages: releases.map(({ pkg }) => ({
-        name: pkg.packageJson.name,
-        version: pkg.packageJson.version,
+        name: pkg.name,
+        version: pkg.version,
       })),
       exitCode: changesetPublishOutput.exitCode,
     };
@@ -269,7 +257,7 @@ type GetMessageOptions = {
     header: string;
   }[];
   prBodyMaxCharacters: number;
-  preState?: PreState;
+  preState?: { tag: string };
 };
 
 export async function getVersionPrBody({
@@ -279,16 +267,16 @@ export async function getVersionPrBody({
   prBodyMaxCharacters,
   branch,
 }: GetMessageOptions) {
-  let messageHeader = `This PR was opened by the [Changesets release](https://github.com/changesets/action) GitHub action. When you're ready to do a release, you can merge this and ${
+  let messageHeader = `This PR was opened by the [shiprig release](https://github.com/rigsmith/shiprig-action) GitHub action. When you're ready to do a release, you can merge this and ${
     hasPublishScript
-      ? `the packages will be published to npm automatically`
-      : `publish to npm yourself or [setup this action to publish automatically](https://github.com/changesets/action#with-publishing)`
+      ? `the packages will be published automatically`
+      : `publish them yourself or [set up this action to publish automatically](https://github.com/rigsmith/shiprig-action#with-publishing)`
   }. If you're not ready to do a release yet, that's fine, whenever you add more changesets to ${branch}, this PR will be updated.
 `;
   let messagePrestate = !!preState
     ? `⚠️⚠️⚠️⚠️⚠️⚠️
 
-\`${branch}\` is currently in **pre mode** so this branch has prereleases rather than normal releases. If you want to exit prereleases, run \`changeset pre exit\` on \`${branch}\`.
+\`${branch}\` is currently in **pre mode** so this branch has prereleases rather than normal releases. If you want to exit prereleases, run \`shiprig pre exit\` on \`${branch}\`.
 
 ⚠️⚠️⚠️⚠️⚠️⚠️
 `
@@ -358,34 +346,40 @@ export async function runVersion({
   const { octokit } = github;
   let versionBranch = `changeset-release/${branch}`;
 
-  let { preState } = await readChangesetState(cwd);
+  const pre = await readPreState(cwd);
+  const preState = pre?.mode === "pre" ? pre : undefined;
 
   await github.prepareBranch(versionBranch);
 
-  let versionsByDirectory = await getVersionsByDirectory(cwd);
+  const versionsBefore = new Map(
+    (await listPackages(cwd)).map((p) => [
+      `${p.ecosystem}:${p.dir}`,
+      p.version,
+    ]),
+  );
 
   const env = { ...process.env, GITHUB_TOKEN: github.getToken() };
 
   if (script) {
     await exec(script, undefined, { cwd, env });
   } else {
-    await execChangesetsCli(["version"], { cwd, env });
+    await execShiprig(["version", "--yes"], { cwd, env });
   }
 
-  let changedPackages = await getChangedPackages(cwd, versionsByDirectory);
+  let changedPackages = (await listPackages(cwd)).filter(
+    (p) => versionsBefore.get(`${p.ecosystem}:${p.dir}`) !== p.version,
+  );
   let changedPackagesInfoPromises = Promise.all(
     changedPackages.map(async (pkg) => {
-      let changelogContents = await fs.readFile(
-        path.join(pkg.dir, "CHANGELOG.md"),
-        "utf8",
+      let entry = getChangelogEntry(
+        (await readChangelog(pkg)) ?? "",
+        pkg.version,
       );
-
-      let entry = getChangelogEntry(changelogContents, pkg.packageJson.version);
       return {
         highestLevel: entry.highestLevel,
-        private: !!pkg.packageJson.private,
+        private: pkg.private,
         content: entry.content,
-        header: `## ${pkg.packageJson.name}@${pkg.packageJson.version}`,
+        header: `## ${pkg.name}@${pkg.version}`,
       };
     }),
   );

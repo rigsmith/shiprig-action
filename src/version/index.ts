@@ -5,7 +5,6 @@ import {
   getOptionalInput,
   getRequiredInput,
   throwOnRemovedCommitModeInput,
-  validateChangesetsCliVersion,
 } from "../utils.ts";
 
 try {
@@ -16,7 +15,6 @@ try {
 
 async function main() {
   const cwd = getOptionalInput("cwd") || process.cwd();
-  await validateChangesetsCliVersion(cwd);
   throwOnRemovedCommitModeInput();
 
   const githubToken = getRequiredInput("github-token");

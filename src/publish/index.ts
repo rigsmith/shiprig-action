@@ -7,7 +7,6 @@ import {
   downloadArtifact,
   getOptionalInput,
   getRequiredInput,
-  validateChangesetsCliVersion,
 } from "../utils.ts";
 
 try {
@@ -18,11 +17,20 @@ try {
 
 async function main() {
   const cwd = getOptionalInput("cwd") || process.cwd();
-  await validateChangesetsCliVersion(cwd);
 
   const githubToken = getRequiredInput("github-token");
   const script = getOptionalInput("script");
   const packDirArtifactId = getOptionalInput("pack-dir-artifact-id");
+  // Rejected before anything is downloaded: shiprig has no
+  // `publish --from-pack-dir` yet (the split pack/publish flow is phase 4 in
+  // docs/DESIGN.md), so a pack directory could only fail later.
+  if (packDirArtifactId && !script) {
+    throw new Error(
+      "The 'pack-dir-artifact-id' input isn't supported by shiprig-action yet: " +
+        "shiprig can't publish from a pack directory. Publish with the built-in " +
+        "`shiprig publish` (omit 'pack-dir-artifact-id') or a custom 'script'.",
+    );
+  }
   const createGithubReleases = core.getBooleanInput("create-github-releases");
   const pushGitTags = core.getBooleanInput("push-git-tags");
 

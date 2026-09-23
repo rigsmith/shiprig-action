@@ -1,3 +1,18 @@
+# shiprig release (shiprig-action)
+
+> **A fork of [changesets/action](https://github.com/changesets/action) that drives
+> [shiprig](https://rigsmith.dev) instead of the npm-only Changesets CLI.** The flow
+> is the same: a standing version PR while releases are pending, then publish,
+> tags and GitHub releases when it merges. It works across every ecosystem shiprig
+> supports (npm, .NET, Go, Rust, …), with changesets and/or conventional commits.
+>
+> - Needs **shiprig ≥ 1.20.0** on `PATH` (or at `$SHIPRIG_BIN`) in the job.
+> - The root action and the `version` sub-action run on shiprig. `select-mode`, `pack`,
+>   and publishing from a pack directory are not ported yet.
+> - Not released yet. See [docs/DESIGN.md](docs/DESIGN.md) for the plan.
+>
+> The rest of this README is upstream's and is being rewritten for shiprig.
+
 # Changesets GitHub Action
 
 > [!IMPORTANT]
@@ -50,19 +65,19 @@ If using [trusted publishing](https://docs.npmjs.com/trusted-publishers), it's r
 
 <!-- api-start -->
 
-| Inputs                   | Description                                                                                                                                                                                                                                               |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `github-token`           | The GitHub token to use for authentication. Defaults to the GitHub-provided token. To use a custom token, pass it explicitly to this input.                                                                                                               |
-| `publish-script`         | The command to use to build and publish packages                                                                                                                                                                                                          |
-| `version-script`         | The command to update version, edit CHANGELOG, read and delete changesets. Default to `changeset version` if not provided                                                                                                                                 |
-| `commit-message`         | The commit message. Default to `Version Packages`                                                                                                                                                                                                         |
-| `pr-title`               | The pull request title. Default to `Version Packages`                                                                                                                                                                                                     |
-| `pr-draft`               | Controls draft PR behavior. Use 'create' to create new version PRs as draft, or 'always' to also convert existing version PRs back to draft when updating them.                                                                                           |
-| `pr-base-branch`         | Sets the base branch of the PR. Defaults to `github.ref_name`.                                                                                                                                                                                            |
-| `create-github-releases` | Whether to create Github releases after publish                                                                                                                                                                                                           |
-| `push-git-tags`          | Whether to create git tags after publish. If `create-github-releases` is set to `true`, this option will also always be `true`.                                                                                                                           |
-| `push-with-git-cli`      | Whether to use the Git CLI instead of the GitHub API to push release commits and tags. Defaults to `false`. When using the GitHub API, commits and tags are signed using GitHub's GPG key and attributed to the user or app that owns the `github-token`. |
-| `cwd`                    | The working directory to execute Changesets in. Defaults to the root of the repository.                                                                                                                                                                   |
+| Inputs                   | Description                                                                                                                                                                                                                                                                           |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `github-token`           | The GitHub token to use for authentication. Defaults to the GitHub-provided token. To use a custom token, pass it explicitly to this input.                                                                                                                                           |
+| `publish-script`         | The command to use to build and publish packages, e.g. `shiprig publish --yes`. The action sets CHANGESETS_OUTPUT to a file; `shiprig publish` (or `shiprig tag`) writes an event there for each tag it creates, and the action reads them back to push the tags and create releases. |
+| `version-script`         | The command to update versions, edit CHANGELOGs, and consume changesets. Defaults to `shiprig version --yes`                                                                                                                                                                          |
+| `commit-message`         | The commit message. Default to `Version Packages`                                                                                                                                                                                                                                     |
+| `pr-title`               | The pull request title. Default to `Version Packages`                                                                                                                                                                                                                                 |
+| `pr-draft`               | Controls draft PR behavior. Use 'create' to create new version PRs as draft, or 'always' to also convert existing version PRs back to draft when updating them.                                                                                                                       |
+| `pr-base-branch`         | Sets the base branch of the PR. Defaults to `github.ref_name`.                                                                                                                                                                                                                        |
+| `create-github-releases` | Whether to create GitHub releases after publish                                                                                                                                                                                                                                       |
+| `push-git-tags`          | Whether to create git tags after publish. If `create-github-releases` is set to `true`, this option will also always be `true`.                                                                                                                                                       |
+| `push-with-git-cli`      | Whether to use the Git CLI instead of the GitHub API to push release commits and tags. Defaults to `false`. When using the GitHub API, commits and tags are signed using GitHub's GPG key and attributed to the user or app that owns the `github-token`.                             |
+| `cwd`                    | The working directory to run shiprig in. Defaults to the root of the repository.                                                                                                                                                                                                      |
 
 | Outputs              | Description                                                                                                                                      |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
