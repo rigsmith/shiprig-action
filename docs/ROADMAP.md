@@ -39,27 +39,13 @@ version-pr-merge`, the default, publishes on the push that merges
 - **4. No approval step on the version PR's CI.** Both this repository and
   rigsmith run the action as the shipRig GitHub App, so version PRs come from
   `shiprig[bot]` and their CI starts on its own.
+- **1. Dogfood in rigsmith.** Stage 1 (version PR only, rigsmith#452) and
+  stage 2 (the shipRig App tags on the release PR's merge and the tag starts
+  GoReleaser, rigsmith#455, #461) are live; rigsmith 1.20.2 was the first
+  release cut end to end. rigsmith's old `.github/actions/release` remains as
+  its reusable action for other repos.
 
 ## Next
-
-### 1. Dogfood in rigsmith, in two stages
-
-**Stage 1: version PR only.** Run the action with no `publish-script`. It keeps
-the "Version Packages" PR up to date and never tags or publishes; merging it is
-followed by pushing the `vX.Y.Z` tag by hand, as today, and GoReleaser does
-the rest. A dry run on 2026-09-23 against rigsmith `main` with shiprig 1.20.0
-produced a clean patch PR (1.20.0 → 1.20.1: `go.mod`, `CHANGELOG.md`, one
-changeset removed).
-
-**Stage 2: the action pushes the tag.** A publish script runs `shiprig tag` and
-pushes. Two things to solve first:
-
-- a tag pushed with the default `GITHUB_TOKEN` doesn't trigger other workflows,
-  so `goreleaser.yml` would never run: this needs a GitHub App token;
-- GoReleaser creates the GitHub Release, so the action's own must be off
-  (`create-github-releases: false`).
-
-Then retire rigsmith's `.github/actions/release`.
 
 ### 2. A config file: `.shiprig.jsonc`
 
