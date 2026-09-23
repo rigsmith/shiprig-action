@@ -14,6 +14,7 @@ import {
   changedPackages,
   changelogMarkdown,
   previewChangelog,
+  versionsFromChangesetsOnly,
 } from "./preview.ts";
 
 afterEach(() => {
@@ -113,6 +114,23 @@ describe("pr-status on shiprig", () => {
     expect(await changedPackages(cwd, "main")).toEqual([]);
   });
 
+  it("reads unusual path names as they are", async () => {
+    await using fixture = await pullRequestRepo();
+    const cwd = fixture.path;
+    await fs.writeFile(
+      path.join(cwd, ".changeset/café-one.md"),
+      '---\n"pkg-b": patch\n---\n\nAccented\n',
+    );
+    await fs.writeFile(path.join(cwd, "packages/a/naïve.js"), "export {};\n");
+    await git(cwd, "add", "-A");
+    await git(cwd, "commit", "-q", "-m", "accents");
+    expect(await pullRequestChangesets(cwd, "main")).toEqual([
+      ".changeset/café-one.md",
+      ".changeset/pr-one.md",
+    ]);
+    expect(await changedPackages(cwd, "main")).toEqual(["pkg-a", "pkg-b"]);
+  });
+
   it("finds the packages the pull request changes", async () => {
     await using fixture = await pullRequestRepo();
     expect(await changedPackages(fixture.path, "main")).toEqual(["pkg-b"]);
@@ -149,6 +167,49 @@ describe("pr-status on shiprig", () => {
   });
 });
 
+describe("a repository that also versions from commits", () => {
+  it("leaves the preview out, since shiprig can't limit it to the PR", async () => {
+    await using fixture = await pullRequestRepo();
+    const cwd = fixture.path;
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    // A conventional commit on main, below the pull request's branch.
+    await git(cwd, "checkout", "-q", "main");
+    await fs.writeFile(
+      path.join(cwd, ".changeset/config.json"),
+      JSON.stringify({ versioning: { source: "both" } }),
+    );
+    await fs.writeFile(path.join(cwd, "packages/a/index.js"), "export {};\n");
+    await git(cwd, "add", "-A");
+    await git(cwd, "commit", "-q", "-m", "feat: a thing on main");
+    await git(cwd, "checkout", "-q", "feature");
+    await git(cwd, "rebase", "-q", "main");
+
+    expect(await versionsFromChangesetsOnly(cwd)).toBe(false);
+    const md = await getStatusMessage(cwd, "main", {
+      sha: "abc",
+      title: "Change b",
+      headRepoUrl: "https://github.com/o/r",
+      headRef: "feature",
+    });
+    expect(md).toContain("also versions from conventional commits");
+    expect(md).not.toContain("Changelog preview");
+  });
+
+  it.each([
+    ["{}", true],
+    ['{ "versioning": { "source": "changesets" } }', true],
+    ['// a comment\n{ "versioning": { "source": "commits" } }', false],
+    ["{ not json", false],
+  ])("reads the source from %s", async (config, expected) => {
+    await using fixture = await pullRequestRepo();
+    await fs.writeFile(
+      path.join(fixture.path, ".changeset/config.json"),
+      config,
+    );
+    expect(await versionsFromChangesetsOnly(fixture.path)).toBe(expected);
+  });
+});
+
 describe("getStatusMessage", () => {
   const pr = {
     sha: "abc",
@@ -162,6 +223,7 @@ describe("getStatusMessage", () => {
     vi.stubEnv("RUNNER_TEMP", fixture.path);
     const md = await getStatusMessage(fixture.path, "main", pr);
     expect(md).toContain("Changeset detected");
+    expect(md).not.toContain("conventional commits");
     expect(md).toMatch(/\| pkg-b +\| Minor +\| 1\.1\.0 +\|/);
     expect(md).toContain("The PR adds a feature");
     // main's pending changeset is neither planned nor previewed

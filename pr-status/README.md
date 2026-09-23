@@ -4,6 +4,8 @@ This action generates the changesets status in PRs: whether the PR has changeset
 
 It runs on shiprig, so it covers every ecosystem shiprig supports, not only npm. The plan comes from `shiprig status --since <base>` and the preview from `shiprig version --changelog`, both limited to the changesets the PR adds or edits. Changesets already pending on the base branch stay out of both.
 
+A repository that also versions from conventional commits (`versioning.source` of `commits` or `both`) gets a note instead of a preview: shiprig can't yet limit commit-sourced entries to the PR, so the plan there includes releases from commits already on the base branch.
+
 It requires the repo to be checked out, and will automatically fetch the PR head ref into a temporary detached worktree in order to infer the changed files and packages.
 
 ## Requirements

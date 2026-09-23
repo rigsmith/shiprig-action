@@ -1,7 +1,11 @@
 import * as github from "@actions/github";
 import { markdownTable } from "markdown-table";
 import { type PlannedRelease, readReleasePlan } from "../shiprig.ts";
-import { pullRequestChangesets, previewChangelog } from "./preview.ts";
+import {
+  previewChangelog,
+  pullRequestChangesets,
+  versionsFromChangesetsOnly,
+} from "./preview.ts";
 import {
   getNewChangesetTemplateContent,
   getNewChangesetUrl,
@@ -46,18 +50,26 @@ export async function getStatusMessage(
     return getAbsentMessage(pr.sha, newChangesetUrl);
   }
 
+  // `status --since` limits changesets to the pull request's, not commits:
+  // with commits as a source, the plan also has the base branch's, and the
+  // preview would too, so it's left out.
+  const changesetsOnly = await versionsFromChangesetsOnly(cwd);
   // The plan first: the preview then trims the checkout's changesets down to
   // this pull request's own.
   const releases = await readReleasePlan(cwd, { since: baseRef });
-  const preview = await previewChangelog(cwd, own);
+  const preview = changesetsOnly ? await previewChangelog(cwd, own) : undefined;
   return getApproveMessage(
     pr.sha,
     newChangesetUrl,
     releases,
     own.length,
     preview,
+    changesetsOnly,
   );
 }
+
+const FROM_COMMITS_NOTE =
+  "> [!NOTE]\n> This repository also versions from conventional commits, so the plan includes releases from commits already on the base branch, and there's no changelog preview.";
 
 export function getApproveMessage(
   commitSha: string,
@@ -65,6 +77,7 @@ export function getApproveMessage(
   releases: PlannedRelease[],
   changesets: number,
   preview: string | undefined,
+  changesetsOnly = true,
 ) {
   return `\
 ### 🦋 Changeset detected
@@ -74,7 +87,7 @@ Latest commit: ${commitSha}
 **The changes in this PR will be included in the next version bump.**
 
 ${getReleasePlanMessage(releases, changesets)}
-${getPreviewMessage(preview)}
+${changesetsOnly ? "" : `\n${FROM_COMMITS_NOTE}\n`}${getPreviewMessage(preview)}
 Not sure what this means? [Click here to learn what changesets are](https://changesets.dev/faq).
 
 [Click here if you're a maintainer who wants to add another changeset to this PR](${newChangesetUrl})`;

@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { exec } from "tinyexec";
+import { stripJsonc } from "../config.ts";
 import { getExecOutputShiprig, listPackages } from "../shiprig.ts";
 
 // The shiprig side of pr-status: which changesets and packages a pull request
@@ -13,6 +14,12 @@ async function git(cwd: string, args: string[]): Promise<string> {
     throwOnError: true,
   });
   return result.stdout;
+}
+
+// Paths from git, NUL-separated (-z), so a quoted or unusual name comes
+// through as it is.
+async function gitPaths(cwd: string, args: string[]): Promise<string[]> {
+  return (await git(cwd, [...args, "-z"])).split("\0").filter(Boolean);
 }
 
 function isChangeset(file: string): boolean {
@@ -30,13 +37,14 @@ export async function pullRequestChangesets(
   cwd: string,
   baseRef: string,
 ): Promise<string[]> {
-  const out = await git(cwd, [
-    "diff",
-    "--name-only",
-    "--diff-filter=d",
-    `${baseRef}...HEAD`,
-  ]);
-  return out.split("\n").filter(Boolean).filter(isChangeset);
+  return (
+    await gitPaths(cwd, [
+      "diff",
+      "--name-only",
+      "--diff-filter=d",
+      `${baseRef}...HEAD`,
+    ])
+  ).filter(isChangeset);
 }
 
 /**
@@ -49,15 +57,15 @@ export async function changedPackages(
   baseRef: string,
 ): Promise<string[]> {
   const root = (await git(cwd, ["rev-parse", "--show-toplevel"])).trim();
-  const files = (await git(cwd, ["diff", "--name-only", `${baseRef}...HEAD`]))
-    .split("\n")
-    .filter(Boolean)
-    .filter((f) => !isChangeset(f));
+  const files = (
+    await gitPaths(cwd, ["diff", "--name-only", `${baseRef}...HEAD`])
+  ).filter((f) => !isChangeset(f));
   const packages = (await listPackages(cwd))
     .filter((p) => !p.ignored)
     .map((p) => ({
       name: p.name,
-      dir: path.relative(root, p.dir),
+      // git's separator, whatever the platform's
+      dir: path.relative(root, p.dir).split(path.sep).join("/"),
     }))
     .sort((a, b) => b.dir.length - a.dir.length);
   const changed = new Set<string>();
@@ -72,9 +80,14 @@ export async function changedPackages(
 
 /**
  * The changelog the pull request's own changesets would write, as Markdown for
- * a comment, or undefined when shiprig can't render it. Other pending
- * changesets are removed from the worktree first, so only this pull request's
- * entries show; the worktree is thrown away afterwards.
+ * a comment, or undefined when it can't be shown. Other pending changesets are
+ * removed from the worktree first, so only this pull request's entries show;
+ * the worktree is thrown away afterwards.
+ *
+ * Only for a repository that versions from changesets alone
+ * (versionsFromChangesetsOnly): with commits as a source, it would add
+ * entries for commits already on the base branch, and shiprig can't limit
+ * those to the pull request's range.
  */
 export async function previewChangelog(
   cwd: string,
@@ -82,10 +95,7 @@ export async function previewChangelog(
 ): Promise<string | undefined> {
   const root = (await git(cwd, ["rev-parse", "--show-toplevel"])).trim();
   const keep = new Set(own);
-  const tracked = (await git(cwd, ["ls-files"]))
-    .split("\n")
-    .filter(Boolean)
-    .filter(isChangeset);
+  const tracked = (await gitPaths(cwd, ["ls-files"])).filter(isChangeset);
   for (const file of tracked) {
     if (!keep.has(file)) await fs.rm(path.join(root, file), { force: true });
   }
@@ -96,6 +106,30 @@ export async function previewChangelog(
   });
   if (out.exitCode !== 0) return undefined;
   return changelogMarkdown(out.stdout);
+}
+
+/**
+ * Whether the changeset config leaves `versioning.source` at changesets, read
+ * through `shiprig config show` (the file shiprig resolved, as written). No
+ * config is the default, changesets; one that can't be read counts as not.
+ */
+export async function versionsFromChangesetsOnly(
+  cwd: string,
+): Promise<boolean> {
+  const out = await getExecOutputShiprig(["config", "show"], {
+    cwd,
+    ignoreReturnCode: true,
+    silent: true,
+  });
+  if (out.exitCode !== 0) return false;
+  const text = out.stdout.trim();
+  if (text.startsWith("no config yet")) return true;
+  try {
+    const source = JSON.parse(stripJsonc(text))?.versioning?.source;
+    return source === undefined || source === "changesets";
+  } catch {
+    return false;
+  }
 }
 
 /**
