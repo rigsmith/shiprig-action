@@ -43,6 +43,7 @@ name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch: # publish by hand: a first release, or a retry
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
@@ -63,7 +64,7 @@ jobs:
           node-version: 22
 
       - name: Install shiprig
-        run: npm install -g @rigsmith/shiprig@1.20.0
+        run: npm install -g @rigsmith/shiprig@1.20.2
 
       - uses: rigsmith/shiprig-action@v0
         with:
@@ -91,10 +92,11 @@ pushed itself is left as it is; a tag the action can't push fails the run,
 since nothing would release it.
 
 **When it publishes.** By default (`publish-on: version-pr-merge`) the publish
-path runs only on the push that merges the version PR, found through the pull
-requests GitHub associates with the pushed commit, and on any run you start
-by hand (`workflow_dispatch`), for a first release or a retry. Other pushes to
-the base branch log "Nothing to publish" and stop. `publish-on: every-push`
+path runs only on the push that merges the version PR (a merged PR from this
+repository's version branch, found through the pull requests GitHub associates
+with the pushed commit), and on any run you start by hand (`workflow_dispatch`,
+which the workflow above allows), for a first release or a retry. Other pushes,
+and other events such as a schedule, log "Nothing to publish" and stop. `publish-on: every-push`
 publishes on every push with nothing pending, as changesets/action does, and
 relies on the publish script to skip what's already out. The job needs
 `pull-requests: read` (or a `github-token` with it) to look the PR up.
@@ -142,7 +144,7 @@ runs the shiprig it was tested with.
 - **npm** (any runner with Node; published with provenance):
 
   ```yaml
-  - run: npm install -g @rigsmith/shiprig@1.20.0
+  - run: npm install -g @rigsmith/shiprig@1.20.2
   ```
 
 - **The install script** (Linux and macOS runners):

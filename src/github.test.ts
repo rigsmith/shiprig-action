@@ -289,7 +289,10 @@ describe("isVersionPrMerge", () => {
   }
   const merged = {
     merged_at: "2026-09-23T00:00:00Z",
-    head: { ref: "changeset-release/main" },
+    head: {
+      ref: "changeset-release/main",
+      repo: { full_name: "changesets/action" },
+    },
     base: { ref: "main" },
   };
 
@@ -304,7 +307,17 @@ describe("isVersionPrMerge", () => {
 
   it.each([
     ["an unmerged version PR", { ...merged, merged_at: null }],
-    ["another branch's PR", { ...merged, head: { ref: "feature" } }],
+    [
+      "another branch's PR",
+      { ...merged, head: { ...merged.head, ref: "feature" } },
+    ],
+    [
+      "a fork's PR from a branch of the same name",
+      {
+        ...merged,
+        head: { ...merged.head, repo: { full_name: "someone/action" } },
+      },
+    ],
     ["a version PR into another base", { ...merged, base: { ref: "next" } }],
   ])("is false for %s", async (_, pull) => {
     expect(

@@ -254,8 +254,9 @@ export class GitHub {
   }
 
   // Whether this run's commit is the version PR's merge: a merged pull request
-  // from `versionBranch` into `base` that GitHub associates with the commit
-  // (the merge, squash or last rebased commit).
+  // from this repository's `versionBranch` into `base` that GitHub associates
+  // with the commit (the merge, squash or last rebased commit). A fork's PR
+  // from a branch of the same name doesn't count.
   async isVersionPrMerge(
     versionBranch: string,
     base: string,
@@ -269,6 +270,8 @@ export class GitHub {
       (pr) =>
         pr.merged_at != null &&
         pr.head.ref === versionBranch &&
+        pr.head.repo?.full_name ===
+          `${context.repo.owner}/${context.repo.repo}` &&
         pr.base.ref === base,
     );
   }

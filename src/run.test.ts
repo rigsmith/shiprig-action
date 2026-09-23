@@ -862,6 +862,21 @@ describe("publishDecision", () => {
     expect(gh.isVersionPrMerge).not.toHaveBeenCalled();
   });
 
+  it.each(["schedule", "pull_request", "workflow_run"])(
+    "doesn't publish a %s run",
+    async (eventName) => {
+      const gh = github(true);
+      const d = await publishDecision({
+        github: gh,
+        publishOn: "version-pr-merge",
+        eventName,
+        base: "main",
+      });
+      expect(d.publish).toBe(false);
+      expect(gh.isVersionPrMerge).not.toHaveBeenCalled();
+    },
+  );
+
   it("publishes on every push with every-push", async () => {
     const d = await publishDecision({
       github: github(false),

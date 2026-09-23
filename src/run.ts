@@ -547,10 +547,11 @@ function shortPackageName(name: string): string {
 }
 
 // Whether the publish path runs, once no changesets are pending. With
-// `version-pr-merge` a push publishes only when it's the version PR's merge;
-// a manually started run (workflow_dispatch, or anything but a push) always
-// does, for a first release or a retry. `every-push` is changesets/action's
-// behaviour.
+// `version-pr-merge` a push publishes only when it's the version PR's merge,
+// a run started by hand (workflow_dispatch) always does, for a first release
+// or a retry, and any other event (a schedule, a pull request, workflow_run)
+// never does. `every-push` is changesets/action's behaviour: publish whatever
+// the event.
 export async function publishDecision({
   github,
   publishOn,
@@ -567,11 +568,17 @@ export async function publishDecision({
       `Invalid publish-on: ${publishOn} (expected "version-pr-merge" or "every-push")`,
     );
   }
-  if (publishOn === "every-push" || eventName !== "push") {
+  if (publishOn === "every-push" || eventName === "workflow_dispatch") {
     return {
       publish: true,
       reason:
         "No changesets found. Attempting to publish any unpublished packages",
+    };
+  }
+  if (eventName !== "push") {
+    return {
+      publish: false,
+      reason: `Nothing to publish: a ${eventName} run doesn't publish with publish-on: version-pr-merge; only the version PR's merge or a run started by hand does.`,
     };
   }
   const versionBranch = `changeset-release/${base}`;
