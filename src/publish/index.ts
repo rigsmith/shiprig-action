@@ -33,6 +33,8 @@ async function main() {
   const createGithubReleases =
     resolveSetting(config, "createGithubReleases") ?? true;
   const pushGitTags = resolveSetting(config, "pushGitTags") ?? true;
+  const commentReleasedPrs =
+    resolveSetting(config, "commentReleasedPrs") ?? true;
 
   if (createGithubReleases && !pushGitTags) {
     throw new Error(
@@ -50,6 +52,7 @@ async function main() {
     github,
     createGithubReleases,
     pushGitTags,
+    commentReleasedPrs,
     cwd,
   });
 

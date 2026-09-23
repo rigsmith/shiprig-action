@@ -45,6 +45,10 @@ let mockedGithubMethods = {
   },
   repos: {
     createRelease: vi.fn(),
+    // The release commit, for "released in" comments: no changesets consumed.
+    getCommit: vi.fn(() =>
+      Promise.resolve({ data: { parents: [{ sha: "parent" }], files: [] } }),
+    ),
   },
   git: {
     getRef: vi.fn(),
@@ -889,6 +893,35 @@ describe("polyglot", () => {
       ]),
     );
   });
+});
+
+describe("publish comments on the released pull requests", () => {
+  it.each([true, false])(
+    "looks at the release commit only when commentReleasedPrs is %s",
+    async (commentReleasedPrs) => {
+      await using fixture = await createPolyglotFixture();
+      const cwd = fixture.path;
+      await updateGithubContext(cwd);
+      vi.stubEnv("RUNNER_TEMP", cwd);
+
+      await runPublish({
+        script: `${process.env.SHIPRIG_BIN} tag`,
+        github: createGithub(cwd),
+        createGithubReleases: false,
+        pushGitTags: true,
+        commentReleasedPrs,
+        cwd,
+      });
+
+      if (commentReleasedPrs) {
+        expect(mockedGithubMethods.repos.getCommit).toHaveBeenCalledWith(
+          expect.objectContaining({ ref: github.context.sha }),
+        );
+      } else {
+        expect(mockedGithubMethods.repos.getCommit).not.toHaveBeenCalled();
+      }
+    },
+  );
 });
 
 describe("releaseTitle", () => {

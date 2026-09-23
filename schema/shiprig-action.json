@@ -41,6 +41,10 @@
       "type": "boolean",
       "description": "Push the tags the publish script reports (input push-git-tags). Default: true."
     },
+    "commentReleasedPrs": {
+      "type": "boolean",
+      "description": "Comment \"released in\" on each pull request whose changeset shipped (input comment-released-prs). Default: true."
+    },
     "pushWithGitCli": {
       "type": "boolean",
       "description": "Push with the Git CLI instead of the GitHub API (input push-with-git-cli). Default: false."

@@ -55,6 +55,11 @@ version-pr-merge`, the default, publishes on the push that merges
   then the file, then the default; a schema in `schema/shiprig-action.json`.
   Labels, Release-As (item 5) and a PR per package (item 6) can join it when
   they exist.
+- **"Released in" comments** (v0.5.0). After a release, each pull request
+  whose changeset shipped is told which package versions it went out in, as
+  release-please and semantic-release do. Found through the changesets the
+  version PR's merge consumed, so a monorepo PR is credited per package.
+  Commit-sourced releases (`versioning.source: commits`) don't get them yet.
 
 ## Next
 

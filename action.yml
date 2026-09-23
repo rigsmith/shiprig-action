@@ -37,6 +37,12 @@ inputs:
   create-github-releases:
     description: "Whether to create GitHub releases after publish. Defaults to `true`. Can also be set as `createGithubReleases` in `shiprig-action.jsonc`; this input wins over the file."
     required: false
+  comment-released-prs:
+    description: >
+      Whether to comment "released in" on each pull request whose changeset shipped, once the
+      tags are pushed. Defaults to `true`. Can also be set as `commentReleasedPrs` in
+      `shiprig-action.jsonc`; this input wins over the file.
+    required: false
   push-git-tags:
     description: >
       Whether to create git tags after publish. If `create-github-releases` is set to `true`,
