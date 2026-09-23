@@ -91,6 +91,21 @@ somewhere, or the action won't know what was released. A tag the script already
 pushed itself is left as it is; a tag the action can't push fails the run,
 since nothing would release it.
 
+**"Released in" comments.** Once a release's tags are pushed, each pull request
+whose changeset shipped gets one comment naming the package versions it went
+out in, linked to their releases:
+
+> 🚀 Released in:
+>
+> - [`widgets@1.2.0`](#)
+
+The pull requests come from the changesets the version PR's merge consumed, so
+in a monorepo a pull request is credited only for the packages its changeset
+named. Re-runs don't comment twice, and a comment that fails only warns: the
+release has already gone out. It needs Pull requests (write) on the token, as
+the workflow above has. Turn it off with `comment-released-prs: false` (or
+`commentReleasedPrs` in `shiprig-action.jsonc`).
+
 **Stale runs.** If the branch a run is on no longer points at the run's commit
 when the run starts, or when it would push (queued runs don't always start in
 order, and a force-push counts too), the run leaves the version PR alone. The
@@ -128,7 +143,7 @@ keeps its settings in `release-please-config.json`:
   directory the action runs in (`cwd`). More than one is an error that names
   them all.
 - **Keys:** `prTitle`, `commitMessage`, `prDraft`, `prBaseBranch`,
-  `publishOn`, `createGithubReleases`, `pushGitTags` and `pushWithGitCli`, each
+  `publishOn`, `createGithubReleases`, `pushGitTags`, `pushWithGitCli` and `commentReleasedPrs`, each
   standing in for the input of the same name. An unknown key or a wrong type
   fails the run; comments and trailing commas are fine.
 - **Precedence:** an input set in the workflow wins, then the file, then the
@@ -275,6 +290,7 @@ message change: `chore: release 1.2.0` rather than `Version Packages`. Set
 | `pr-base-branch`         | Sets the base branch of the PR. Defaults to `github.ref_name`.                                                                                                                                                                                                                        |
 | `create-github-releases` | Whether to create GitHub releases after publish                                                                                                                                                                                                                                       |
 | `push-git-tags`          | Whether to create git tags after publish. If `create-github-releases` is set to `true`, this option will also always be `true`.                                                                                                                                                       |
+| `comment-released-prs`   | Whether to comment "released in" on each pull request whose changeset shipped, once the tags are pushed. Defaults to `true`.                                                                                                                                                          |
 | `publish-on`             | When the publish path runs once nothing is pending: `version-pr-merge` (default), only on the push that merges the version PR and on runs started by hand; `every-push`, on every push, as changesets/action does.                                                                    |
 | `push-with-git-cli`      | Whether to use the Git CLI instead of the GitHub API to push release commits and tags. Defaults to `false`. When using the GitHub API, commits and tags are signed using GitHub's GPG key and attributed to the user or app that owns the `github-token`.                             |
 | `cwd`                    | The working directory to run shiprig in. Defaults to the root of the repository.                                                                                                                                                                                                      |
