@@ -150,9 +150,11 @@ winget and the rest.
 - `has-changesets`: whether changeset files exist (counting the ones waiting in
   `.changeset/pre/` after `pre exit`). A release that comes only from
   conventional commits doesn't set it.
-- `published`, `published-packages`: the packages whose tags `publish-script`
-  reported through `CHANGESETS_OUTPUT`. They reflect those reports, not a check
+- `published`: `"true"` when `publish-script` reported at least one tag through
+  `CHANGESETS_OUTPUT`, else `"false"`. It reflects those reports, not a check
   against the registry.
+- `published-packages`: a JSON array of the packages it reported, each with its
+  version when the script ran.
 - `pr-number`: the version PR opened or updated.
 
 ## Sub-actions
@@ -203,7 +205,7 @@ anything else that looks for it keep working.
 | Outputs              | Description                                                                                                                                                                                                                               |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `published`          | A "true" or "false" string value to indicate whether the publish script reported any tag (a `git-tag` event through CHANGESETS_OUTPUT, which `shiprig publish` and `shiprig tag` write). It reflects those reports, not a registry check. |
-| `published-packages` | A JSON array of the packages whose tags the publish script reported, e.g. `[{"name": "@xx/xx", "version": "1.2.0"}, {"name": "@xx/xy", "version": "0.8.9"}]`                                                                              |
+| `published-packages` | A JSON array of the packages whose tags the publish script reported, each at its version when the script ran, e.g. `[{"name": "@xx/xx", "version": "1.2.0"}, {"name": "@xx/xy", "version": "0.8.9"}]`                                     |
 | `has-changesets`     | A "true" or "false" string value about whether changeset files exist (including those waiting in .changeset/pre/ after `pre exit`). A release from conventional commits alone doesn't set it.                                             |
 | `pr-number`          | The pull request number that was created or updated                                                                                                                                                                                       |
 
