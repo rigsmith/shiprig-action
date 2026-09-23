@@ -8,7 +8,12 @@ import { writeChangeset } from "@changesets/write";
 import { exec } from "tinyexec";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GitHub } from "./github.ts";
-import { releaseTitle, runPublish, runVersion } from "./run.ts";
+import {
+  publishDecision,
+  releaseTitle,
+  runPublish,
+  runVersion,
+} from "./run.ts";
 import { gitdir } from "./test-utils.ts";
 
 vi.mock("@actions/github", () => ({
@@ -811,5 +816,70 @@ describe("releaseTitle", () => {
 
   it("falls back to the bare prefix when nothing changed", () => {
     expect(releaseTitle([])).toBe("chore: release");
+  });
+});
+
+describe("publishDecision", () => {
+  function github(merged: boolean) {
+    return { isVersionPrMerge: vi.fn(() => Promise.resolve(merged)) };
+  }
+
+  it("publishes the push that merges the version PR", async () => {
+    const gh = github(true);
+    const d = await publishDecision({
+      github: gh,
+      publishOn: "version-pr-merge",
+      eventName: "push",
+      base: "main",
+    });
+    expect(d.publish).toBe(true);
+    expect(gh.isVersionPrMerge).toHaveBeenCalledWith(
+      "changeset-release/main",
+      "main",
+    );
+  });
+
+  it("skips any other push", async () => {
+    const d = await publishDecision({
+      github: github(false),
+      publishOn: "version-pr-merge",
+      eventName: "push",
+      base: "main",
+    });
+    expect(d).toMatchObject({ publish: false });
+    expect(d.reason).toContain("isn't the merge of the version PR");
+  });
+
+  it("always publishes a run started by hand", async () => {
+    const gh = github(false);
+    const d = await publishDecision({
+      github: gh,
+      publishOn: "version-pr-merge",
+      eventName: "workflow_dispatch",
+      base: "main",
+    });
+    expect(d.publish).toBe(true);
+    expect(gh.isVersionPrMerge).not.toHaveBeenCalled();
+  });
+
+  it("publishes on every push with every-push", async () => {
+    const d = await publishDecision({
+      github: github(false),
+      publishOn: "every-push",
+      eventName: "push",
+      base: "main",
+    });
+    expect(d.publish).toBe(true);
+  });
+
+  it("rejects an unknown publish-on", async () => {
+    await expect(
+      publishDecision({
+        github: github(true),
+        publishOn: "sometimes",
+        eventName: "push",
+        base: "main",
+      }),
+    ).rejects.toThrow("Invalid publish-on: sometimes");
   });
 });

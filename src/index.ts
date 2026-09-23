@@ -1,6 +1,7 @@
 import * as core from "@actions/core";
+import { context } from "@actions/github";
 import { GitHub } from "./github.ts";
-import { runPublish, runVersion } from "./run.ts";
+import { publishDecision, runPublish, runVersion } from "./run.ts";
 import { hasChangesetFiles, readReleasePlan } from "./shiprig.ts";
 import {
   getOptionalInput,
@@ -77,9 +78,18 @@ async function main() {
       );
       return;
     case !hasChangesets && hasPublishScript: {
-      core.info(
-        "No changesets found. Attempting to publish any unpublished packages",
-      );
+      const decision = await publishDecision({
+        github,
+        publishOn: core.getInput("publish-on") || "version-pr-merge",
+        eventName: context.eventName,
+        base:
+          getOptionalInput("pr-base-branch") ??
+          context.ref.replace("refs/heads/", ""),
+      });
+      core.info(decision.reason);
+      if (!decision.publish) {
+        return;
+      }
 
       const createGithubReleases = core.getBooleanInput(
         "create-github-releases",

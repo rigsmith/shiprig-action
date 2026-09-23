@@ -31,6 +31,16 @@ function getAuthorization(token: string) {
   return `basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
 }
 
+// Swaps in a stand-in for the parts of Octokit a test reaches.
+function withOctokit(github: GitHub, rest: Record<string, unknown>) {
+  (github as unknown as { octokit: unknown }).octokit = { rest };
+  return github;
+}
+
+const notFound = vi.fn(() =>
+  Promise.reject(Object.assign(new Error("Not Found"), { status: 404 })),
+);
+
 function createRemote() {
   return createGitHttpRemote({ "file.txt": "initial\n" });
 }
@@ -115,6 +125,7 @@ describe("GitHub", () => {
 
     const github = await pushChangedFile(repository, serverUrl, actionToken);
     await git(repository, ["tag", "v1.0.0"]);
+    withOctokit(github, { git: { getRef: notFound } });
     await github.pushTag("v1.0.0");
 
     await expectReleaseBranch(remote, repository);
@@ -224,4 +235,89 @@ describe("GitHub", () => {
     await expectReleaseBranch(pushRemote, repository);
     expectRequestsToUseToken(pushRemote, actionToken);
   }, 15_000);
+});
+
+describe("pushTag via the API", () => {
+  function apiGitHub(getRef: () => Promise<unknown>) {
+    const createRef = vi.fn(() => Promise.resolve({}));
+    const github = withOctokit(new GitHub({ cwd: ".", githubToken: "t" }), {
+      git: { getRef, createRef },
+    });
+    return { github, createRef };
+  }
+
+  it("leaves a tag the publish script already pushed", async () => {
+    const { github, createRef } = apiGitHub(() => Promise.resolve({}));
+    await github.pushTag("v1.0.0");
+    expect(createRef).not.toHaveBeenCalled();
+  });
+
+  it("creates a tag that isn't on GitHub yet", async () => {
+    const { github, createRef } = apiGitHub(notFound);
+    await github.pushTag("v1.0.0");
+    expect(createRef).toHaveBeenCalledWith(
+      expect.objectContaining({ ref: "refs/tags/v1.0.0", sha: "base-sha" }),
+    );
+  });
+
+  it("fails when the tag can't be created, rather than assuming it was pushed", async () => {
+    const { github, createRef } = apiGitHub(notFound);
+    createRef.mockImplementationOnce(() =>
+      Promise.reject(new Error("Resource not accessible by integration")),
+    );
+    await expect(github.pushTag("v1.0.0")).rejects.toThrow(
+      "Resource not accessible",
+    );
+  });
+
+  it("fails when GitHub can't say whether the tag exists", async () => {
+    const { github } = apiGitHub(() =>
+      Promise.reject(Object.assign(new Error("Server Error"), { status: 500 })),
+    );
+    await expect(github.pushTag("v1.0.0")).rejects.toThrow("Server Error");
+  });
+});
+
+describe("isVersionPrMerge", () => {
+  function withPulls(pulls: unknown[]) {
+    return withOctokit(new GitHub({ cwd: ".", githubToken: "t" }), {
+      repos: {
+        listPullRequestsAssociatedWithCommit: () =>
+          Promise.resolve({ data: pulls }),
+      },
+    });
+  }
+  const merged = {
+    merged_at: "2026-09-23T00:00:00Z",
+    head: { ref: "changeset-release/main" },
+    base: { ref: "main" },
+  };
+
+  it("is true for the merged version PR", async () => {
+    expect(
+      await withPulls([merged]).isVersionPrMerge(
+        "changeset-release/main",
+        "main",
+      ),
+    ).toBe(true);
+  });
+
+  it.each([
+    ["an unmerged version PR", { ...merged, merged_at: null }],
+    ["another branch's PR", { ...merged, head: { ref: "feature" } }],
+    ["a version PR into another base", { ...merged, base: { ref: "next" } }],
+  ])("is false for %s", async (_, pull) => {
+    expect(
+      await withPulls([pull]).isVersionPrMerge(
+        "changeset-release/main",
+        "main",
+      ),
+    ).toBe(false);
+  });
+
+  it("is false for a commit no PR is associated with", async () => {
+    expect(
+      await withPulls([]).isVersionPrMerge("changeset-release/main", "main"),
+    ).toBe(false);
+  });
 });
