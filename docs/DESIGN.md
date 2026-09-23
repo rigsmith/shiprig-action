@@ -28,8 +28,8 @@ as the source.
 
 ## Where upstream assumes npm, and what replaced it
 
-Every row but the last is done: the rigsmith side shipped in shiprig 1.20.0,
-the action side in #7.
+Rows 1–6 and 8 are done: the rigsmith side shipped in shiprig 1.20.0, the
+action side in #7. Row 7 is phase 4.
 
 | #   | Upstream (npm-only)                                                                           | shiprig-action                                                                                                                                                                                                                                                                                                 | Status                            |
 | --- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
