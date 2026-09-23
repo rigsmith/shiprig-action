@@ -1,4 +1,4 @@
-name: Changesets - Version
+name: shiprig release - Version
 description: Version packages
 runs:
   using: node24
@@ -35,7 +35,7 @@ inputs:
     required: false
     default: false
   cwd:
-    description: "The working directory to execute Changesets in. Defaults to the root of the repository."
+    description: "The working directory to run shiprig (or the custom script) in. Defaults to the root of the repository."
     required: false
 outputs:
   pr-number:

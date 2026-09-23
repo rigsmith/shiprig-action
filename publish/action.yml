@@ -1,4 +1,4 @@
-name: Changesets - Publish
+name: shiprig release - Publish
 description: Publish packages to npm
 runs:
   using: node24
@@ -27,7 +27,7 @@ inputs:
     required: false
     default: true
   cwd:
-    description: "The working directory to execute Changesets in. Defaults to the root of the repository."
+    description: "The working directory to run shiprig (or the custom script) in. Defaults to the root of the repository."
     required: false
 outputs:
   published:
