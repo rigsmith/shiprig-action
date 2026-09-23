@@ -46,6 +46,21 @@ describe("summaries", () => {
   });
 });
 
+describe("publishedSummary on a failed publish", () => {
+  it("says the command failed, with or without releases", () => {
+    const none = publishedSummary([], 1);
+    expect(none).toContain("exited with code 1");
+    expect(none).toContain("Nothing new was released.");
+    const some = publishedSummary(
+      [{ name: "widgets", version: "1.2.0", tag: "v1.2.0" }],
+      2,
+    );
+    expect(some).toContain("exited with code 2");
+    expect(some).toContain("`v1.2.0`");
+    expect(publishedSummary([], 0)).not.toContain("exited");
+  });
+});
+
 describe("writeSummary", () => {
   it("appends to the job summary file", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "summary-"));

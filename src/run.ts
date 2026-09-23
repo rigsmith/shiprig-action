@@ -473,20 +473,6 @@ export async function runVersion({
   let changedPackages = (await listPackages(cwd)).filter(
     (p) => versionsBefore.get(`${p.ecosystem}:${p.dir}`) !== p.version,
   );
-  let changedPackagesInfoPromises = Promise.all(
-    changedPackages.map(async (pkg) => {
-      let entry = getChangelogEntry(
-        (await readChangelog(pkg)) ?? "",
-        pkg.version,
-      );
-      return {
-        highestLevel: entry.highestLevel,
-        private: pkg.private,
-        content: entry.content,
-        header: `## ${pkg.name}@${pkg.version}`,
-      };
-    }),
-  );
 
   // A title or message the user set keeps upstream's prerelease suffix. The
   // default names the versions instead, which already carry the tag
@@ -517,14 +503,31 @@ export async function runVersion({
     return { skipped: "stale" };
   }
 
+  // Read only once the run is sure to push, and before it does: an early
+  // return or a failed push would leave a rejected read unhandled.
+  const changedPackagesInfo = (
+    await Promise.all(
+      changedPackages.map(async (pkg) => {
+        let entry = getChangelogEntry(
+          (await readChangelog(pkg)) ?? "",
+          pkg.version,
+        );
+        return {
+          highestLevel: entry.highestLevel,
+          private: pkg.private,
+          content: entry.content,
+          header: `## ${pkg.name}@${pkg.version}`,
+        };
+      }),
+    )
+  )
+    .filter((x) => x)
+    .sort(sortTheThings);
+
   await github.pushChanges({
     branch: versionBranch,
     message: finalCommitMessage,
   });
-
-  const changedPackagesInfo = (await changedPackagesInfoPromises)
-    .filter((x) => x)
-    .sort(sortTheThings);
 
   let prBody = await getVersionPrBody({
     hasPublishScript,

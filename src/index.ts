@@ -59,8 +59,7 @@ async function main() {
   const prDraft = resolveSetting(config, "prDraft");
   const prBaseBranch = resolveSetting(config, "prBaseBranch");
   if (prDraft !== undefined && prDraft !== "always" && prDraft !== "create") {
-    core.setFailed(`Invalid pr-draft: ${prDraft}`);
-    return;
+    throw new Error(`Invalid pr-draft: ${prDraft}`);
   }
   const github = new GitHub({
     cwd,
@@ -131,7 +130,10 @@ async function main() {
       });
 
       await writeSummary(
-        publishedSummary(result.published ? result.released : []),
+        publishedSummary(
+          result.published ? result.released : [],
+          result.exitCode,
+        ),
       );
       if (result.published) {
         core.setOutput("published", "true");

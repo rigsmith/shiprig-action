@@ -367,7 +367,10 @@ describe("commentReleasedPrs", () => {
 describe("releases from commits (no changesets consumed)", () => {
   // A commit that removed no changesets, and an API that knows which merged
   // pull request each commit came from.
-  function commitsGitHub(prOf: Record<string, number>) {
+  function commitsGitHub(
+    prOf: Record<string, number>,
+    failOnce = new Set<string>(),
+  ) {
     const created: { pr: number; body: string }[] = [];
     const lookups: string[] = [];
     const octokit: CommentOctokit = {
@@ -384,6 +387,7 @@ describe("releases from commits (no changesets consumed)", () => {
           listCommits: async () => ({ data: [] }),
           listPullRequestsAssociatedWithCommit: async ({ commit_sha }) => {
             lookups.push(commit_sha);
+            if (failOnce.delete(commit_sha)) throw new Error("502");
             const pr = prOf[commit_sha.replace(/-full$/, "")];
             return {
               data:
@@ -421,6 +425,27 @@ describe("releases from commits (no changesets consumed)", () => {
     expect(lookups).toEqual(["abc1234-full"]);
     expect(created.map((c) => c.pr)).toEqual([40]);
     expect(created[0].body).toContain("widgets@1.2.0");
+    expect(created[0].body).toContain("gadgets@1.2.0");
+  });
+
+  it("tries a failed lookup again for the next package", async () => {
+    const { octokit, created, lookups } = commitsGitHub(
+      { abc1234: 40 },
+      new Set(["abc1234-full"]),
+    );
+    await commentReleasedPrs({
+      octokit,
+      sha: "s",
+      released: ["widgets", "gadgets"].map((name) => ({
+        name,
+        version: "1.2.0",
+        tag: `${name}@1.2.0`,
+        notes: "- abc1234: feat: a shared thing\n",
+      })),
+      serverUrl: SERVER,
+    });
+    expect(lookups).toEqual(["abc1234-full", "abc1234-full"]);
+    expect(created.map((c) => c.pr)).toEqual([40]);
     expect(created[0].body).toContain("gadgets@1.2.0");
   });
 

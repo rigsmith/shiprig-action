@@ -54,9 +54,20 @@ export function planSummary(
 /** The publish path: what this run released. */
 export function publishedSummary(
   released: { name: string; version: string; tag?: string }[],
+  exitCode = 0,
 ): string {
+  const failed =
+    exitCode === 0
+      ? []
+      : [`**The publish command exited with code ${exitCode}.**`, ""];
   if (released.length === 0) {
-    return "## shiprig-action: publish\n\nNothing new was released.\n";
+    return [
+      "## shiprig-action: publish",
+      "",
+      ...failed,
+      "Nothing new was released.",
+      "",
+    ].join("\n");
   }
   const rows = [...released]
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -67,6 +78,7 @@ export function publishedSummary(
   return [
     "## shiprig-action: published",
     "",
+    ...failed,
     "| Package | Version | Tag |",
     "| --- | --- | --- |",
     ...rows,

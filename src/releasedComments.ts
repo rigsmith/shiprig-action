@@ -316,8 +316,11 @@ async function creditFromNotes(
   released: ReleasedPackage[],
   credit: (pr: number, r: ReleasedPackage) => void,
 ): Promise<void> {
+  // Answers only: a lookup that failed is tried again for the next package.
   const prOfCommit = new Map<string, number | undefined>();
-  const lookUp = async (commit: string) => {
+  const lookUp = async (
+    commit: string,
+  ): Promise<{ pr: number | undefined } | undefined> => {
     try {
       const { data: full } = await octokit.rest.repos.getCommit({
         ...context.repo,
@@ -331,7 +334,7 @@ async function creditFromNotes(
           ...context.repo,
           commit_sha: sha,
         });
-      return pulls.find((p) => p.merged_at != null)?.number;
+      return { pr: pulls.find((p) => p.merged_at != null)?.number };
     } catch (err) {
       core.warning(
         `Couldn't find the pull request for commit ${commit}: ${(err as Error).message}`,
@@ -345,7 +348,10 @@ async function creditFromNotes(
     for (const pr of pullRequests) credit(pr, r);
     if (pullRequests.length > 0) continue; // the links already name them
     for (const commit of commits) {
-      if (!prOfCommit.has(commit)) prOfCommit.set(commit, await lookUp(commit));
+      if (!prOfCommit.has(commit)) {
+        const found = await lookUp(commit);
+        if (found) prOfCommit.set(commit, found.pr);
+      }
       const pr = prOfCommit.get(commit);
       if (pr !== undefined) credit(pr, r);
     }
