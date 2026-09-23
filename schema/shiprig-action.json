@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/rigsmith/shiprig-action/main/schema/shiprig-action.json",
+  "title": "shiprig-action settings",
+  "description": "Settings for rigsmith/shiprig-action (shiprig-action.jsonc or .json, in .github/, .changeset/ or the repository root). Each key stands in for the action input of the same name; an input set in the workflow wins over the file.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "prTitle": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The version PR's title (input pr-title). Default: `chore: release` plus what it releases."
+    },
+    "commitMessage": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The version commit's message (input commit-message). Default: the PR's default title."
+    },
+    "prDraft": {
+      "enum": ["always", "create"],
+      "description": "Open the version PR as a draft (`create`), or also turn it back into one on every update (`always`) (input pr-draft)."
+    },
+    "prBaseBranch": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The version PR's base branch (input pr-base-branch). Default: the branch the workflow runs on."
+    },
+    "publishOn": {
+      "enum": ["version-pr-merge", "every-push"],
+      "description": "When the publish path runs once nothing is pending (input publish-on). Default: `version-pr-merge`."
+    },
+    "createGithubReleases": {
+      "type": "boolean",
+      "description": "Create a GitHub release for each tag the publish script reports (input create-github-releases). Default: true."
+    },
+    "pushGitTags": {
+      "type": "boolean",
+      "description": "Push the tags the publish script reports (input push-git-tags). Default: true."
+    },
+    "pushWithGitCli": {
+      "type": "boolean",
+      "description": "Push with the Git CLI instead of the GitHub API (input push-with-git-cli). Default: false."
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import * as core from "@actions/core";
+import { loadConfig, resolveSetting } from "../config.ts";
 import { GitHub } from "../github.ts";
 import { runVersion } from "../run.ts";
 import {
@@ -19,11 +20,14 @@ async function main() {
 
   const githubToken = getRequiredInput("github-token");
   const script = getOptionalInput("script");
-  const commitMessage = getOptionalInput("commit-message");
-  const prTitle = getOptionalInput("pr-title");
-  const prDraft = getOptionalInput("pr-draft");
-  const prBaseBranch = getOptionalInput("pr-base-branch");
-  const pushWithGitCli = core.getBooleanInput("push-with-git-cli");
+  // Each setting: the workflow's input, else shiprig-action.jsonc, else the
+  // default here.
+  const config = await loadConfig(cwd);
+  const commitMessage = resolveSetting(config, "commitMessage");
+  const prTitle = resolveSetting(config, "prTitle");
+  const prDraft = resolveSetting(config, "prDraft");
+  const prBaseBranch = resolveSetting(config, "prBaseBranch");
+  const pushWithGitCli = resolveSetting(config, "pushWithGitCli") ?? false;
 
   // Validations
   if (prDraft !== undefined && prDraft !== "always" && prDraft !== "create") {
