@@ -91,7 +91,7 @@ the README (#9), and the action releasing itself
 ([RELEASING.md](RELEASING.md)). Done, released as v0.1.0.
 
 **3. Roadmap.** [ROADMAP.md](ROADMAP.md): dogfooding in rigsmith, a
-`.shiprig.json` config file, publishing only when the version PR merges, and
+`.shiprig.jsonc` config file, publishing only when the version PR merges, and
 the rest.
 
 **4. The split sub-actions** (row 7), for the build → pack → trusted-publish

@@ -43,15 +43,15 @@ pushes. Two things to solve first:
 
 Then retire rigsmith's `.github/actions/release`.
 
-### 2. A config file: `.shiprig.json`
+### 2. A config file: `.shiprig.jsonc`
 
 The release-please equivalent of `release-please-config.json`: one committed
 file for the settings that today are action inputs, plus the ones that have
 no input yet.
 
-- **Name and place.** `.shiprig.json`, found in `.changeset/`, the repo root, or
-  `.github/`. More than one is an error, not a merge, so there's never a
-  question of which one won.
+- **Name and place.** `.shiprig.jsonc` or `.shiprig.json` (comments allowed in
+  either), found in `.changeset/`, the repo root, or `.github/`. More than one
+  is an error, not a merge, so there's never a question of which one won.
 - **The engine owns it.** shiprig reads and validates it (published schema,
   like `changeset-config.json`), and a `shiprig config --json` prints the
   resolved settings. The action reads that through `src/shiprig.ts`, the same
@@ -68,10 +68,8 @@ no input yet.
   - a PR per package or group (item 6).
 - **Separate from the release pipeline.** `.changeset/release.jsonc`
   configures the local `shiprig release` steps (version → commit → tag →
-  push); `.shiprig.json` configures the action. Neither reads the other's
+  push); `.shiprig.jsonc` configures the action. Neither reads the other's
   settings.
-- **Open.** Whether comments are allowed (the other `.changeset` files are
-  JSONC).
 
 ### 3. Publish only when the version PR merges (B)
 
@@ -98,7 +96,7 @@ anyway. Workflow-only; document it in the README's custom-token section.
 ### 5. Non-interactive version override (D)
 
 shiprig's override prompt can't be answered in CI. Add a non-interactive form:
-a `Release-As`-style setting in `.shiprig.json`, a flag, or a field in a
+a `Release-As`-style setting in `.shiprig.jsonc`, a flag, or a field in a
 changeset. Opt-in, so default behaviour keeps matching canon.
 
 ### 6. A version PR per package (E)
