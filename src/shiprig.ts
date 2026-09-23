@@ -273,7 +273,7 @@ export async function readPreState(
  * The workspace root shiprig reports paths against: the nearest directory
  * holding .changeset/, else the git root, else cwd (shiprig's FindRoot).
  */
-async function workspaceRoot(cwd: string): Promise<string> {
+export async function workspaceRoot(cwd: string): Promise<string> {
   let dir = path.resolve(cwd);
   for (;;) {
     try {

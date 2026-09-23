@@ -83,6 +83,10 @@ describe("parseConfig", () => {
       '"publishOn" must be "version-pr-merge" or "every-push"',
     ],
     [{ prDraft: true }, '"prDraft" must be "always" or "create"'],
+    [{ toString: "x" }, 'unknown key "toString"'],
+    [{ constructor: "x" }, 'unknown key "constructor"'],
+    [{ $schema: 1 }, '"$schema" must be a non-empty string'],
+    [{ prBaseBranch: " main " }, '"prBaseBranch" can\'t contain whitespace'],
   ])("rejects %j", (value, message) => {
     expect(() => parseConfig(JSON.stringify(value), "f")).toThrow(message);
   });
@@ -126,6 +130,16 @@ describe("findConfig", () => {
     });
     const found = await findConfig(path.join(fixture.path, "packages/app"));
     expect(found.config).toEqual({ prTitle: "Root" });
+  });
+
+  it("finds .changeset/ at the workspace root from a nested cwd", async () => {
+    await using fixture = await gitdir({
+      ".changeset/shiprig-action.jsonc": '{ "prTitle": "Workspace" }',
+      ".changeset/config.json": "{}",
+      "packages/app/package.json": "{}",
+    });
+    const found = await findConfig(path.join(fixture.path, "packages/app"));
+    expect(found.config).toEqual({ prTitle: "Workspace" });
   });
 
   it("refuses more than one, naming each", async () => {
@@ -186,7 +200,7 @@ describe("schema/shiprig-action.json", () => {
     );
     const props = schema.properties as Record<
       string,
-      { type?: string; enum?: string[] }
+      { type?: string; enum?: string[]; pattern?: string }
     >;
     expect(Object.keys(props).sort()).toEqual(
       ["$schema", ...Object.keys(CONFIG_KEYS)].sort(),
@@ -196,6 +210,10 @@ describe("schema/shiprig-action.json", () => {
         expect(props[key].enum, key).toEqual(spec.type);
       } else {
         expect(props[key].type, key).toBe(spec.type);
+        // A string the validator rejects as blank, the schema rejects too.
+        if (spec.type === "string") {
+          expect(props[key].pattern, key).toBeDefined();
+        }
       }
     }
     expect(schema.additionalProperties).toBe(false);

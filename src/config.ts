@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import * as core from "@actions/core";
 import { getExecOutput } from "@actions/exec";
+import { workspaceRoot } from "./shiprig.ts";
 
 // shiprig-action.jsonc (or .json): the action's settings in a committed file,
 // as release-please keeps its settings in release-please-config.json. It holds
@@ -38,8 +39,9 @@ export const CONFIG_KEYS = {
 >;
 
 /**
- * Where the file may be: `.github/` at the repository root, then `.changeset/`
- * and the directory the action runs in. More than one is an error that names
+ * Where the file may be: `.github/` at the repository root, `.changeset/` (at
+ * the workspace root, found the way shiprig finds it, walking up from `cwd`),
+ * or the directory the action runs in. More than one is an error that names
  * them all, never a merge, so there's no question of which one won.
  */
 export async function findConfig(
@@ -48,7 +50,7 @@ export async function findConfig(
   const dirs = [
     ...new Set([
       path.join(await gitRoot(cwd), ".github"),
-      path.join(cwd, ".changeset"),
+      path.join(await workspaceRoot(cwd), ".changeset"),
       cwd,
     ]),
   ];
@@ -104,8 +106,19 @@ export function parseConfig(text: string, file: string): ActionConfig {
   }
   const config: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(raw)) {
-    if (key === "$schema") continue;
-    const spec = (CONFIG_KEYS as Record<string, { type: unknown }>)[key];
+    if (key === "$schema") {
+      if (typeof value !== "string" || value.trim() === "") {
+        throw new Error(
+          `${file}: "$schema" must be a non-empty string, not ${JSON.stringify(value)}`,
+        );
+      }
+      continue;
+    }
+    // An own key only: `toString` and the like are unknown keys, not
+    // Object.prototype members.
+    const spec = Object.hasOwn(CONFIG_KEYS, key)
+      ? (CONFIG_KEYS as Record<string, { type: unknown }>)[key]
+      : undefined;
     if (!spec) {
       throw new Error(
         `${file}: unknown key "${key}" (known: ${Object.keys(CONFIG_KEYS).join(", ")})`,
@@ -125,6 +138,13 @@ export function parseConfig(text: string, file: string): ActionConfig {
           : `a ${type}`;
       throw new Error(
         `${file}: "${key}" must be ${want}, not ${JSON.stringify(value)}`,
+      );
+    }
+    // A branch name can't hold whitespace, and " main " would name a base
+    // that doesn't exist.
+    if (key === "prBaseBranch" && /\s/.test(value as string)) {
+      throw new Error(
+        `${file}: "prBaseBranch" can't contain whitespace, not ${JSON.stringify(value)}`,
       );
     }
     config[key] = value;
