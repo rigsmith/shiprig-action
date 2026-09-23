@@ -484,27 +484,8 @@ export async function runVersion({
   const finalCommitMessage =
     commitMessage !== undefined ? `${commitMessage}${preSuffix}` : defaultTitle;
 
-  // Listed again: the hold label may have been added, or another run may have
-  // opened the PR, while the version script ran.
-  const existingPullRequests = { data: await listVersionPrs() };
-  const heldLate = held(existingPullRequests.data);
-  if (heldLate) {
-    return { pullRequestNumber: heldLate.number, skipped: "held" };
-  }
-  core.debug(
-    `Existing pull requests: ${JSON.stringify(
-      existingPullRequests.data,
-      null,
-      2,
-    )}`,
-  );
-
-  if (await stale()) {
-    return { skipped: "stale" };
-  }
-
-  // Read only once the run is sure to push, and before it does: an early
-  // return or a failed push would leave a rejected read unhandled.
+  // Awaited here, before the checks below, so nothing can change between
+  // them and the push, and no early return leaves a read unhandled.
   const changedPackagesInfo = (
     await Promise.all(
       changedPackages.map(async (pkg) => {
@@ -523,6 +504,25 @@ export async function runVersion({
   )
     .filter((x) => x)
     .sort(sortTheThings);
+
+  // Listed again: the hold label may have been added, or another run may have
+  // opened the PR, while the version script ran.
+  const existingPullRequests = { data: await listVersionPrs() };
+  const heldLate = held(existingPullRequests.data);
+  if (heldLate) {
+    return { pullRequestNumber: heldLate.number, skipped: "held" };
+  }
+  core.debug(
+    `Existing pull requests: ${JSON.stringify(
+      existingPullRequests.data,
+      null,
+      2,
+    )}`,
+  );
+
+  if (await stale()) {
+    return { skipped: "stale" };
+  }
 
   await github.pushChanges({
     branch: versionBranch,
