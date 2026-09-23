@@ -45,6 +45,11 @@
       "type": "boolean",
       "description": "Comment \"released in\" on each pull request whose changeset shipped (input comment-released-prs). Default: true."
     },
+    "holdLabel": {
+      "type": "string",
+      "pattern": "\\S",
+      "description": "A label on the version PR that stops the action updating its branch, for hand edits (input hold-label). Default: release:hold."
+    },
     "pushWithGitCli": {
       "type": "boolean",
       "description": "Push with the Git CLI instead of the GitHub API (input push-with-git-cli). Default: false."

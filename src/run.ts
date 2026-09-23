@@ -250,11 +250,17 @@ export async function runPublish({
     await commentReleasedPrsOn({
       octokit,
       sha: context.sha,
-      released: releases.map(({ pkg, tag }) => ({
-        name: pkg.name,
-        version: pkg.version,
-        tag,
-      })),
+      released: await Promise.all(
+        releases.map(async ({ pkg, tag }) => ({
+          name: pkg.name,
+          version: pkg.version,
+          tag,
+          notes: getChangelogEntry(
+            (await readChangelog(pkg)) ?? "",
+            pkg.version,
+          )?.content,
+        })),
+      ),
       serverUrl: github.serverUrl,
     });
   }
@@ -352,11 +358,15 @@ type VersionOptions = {
   prBodyMaxCharacters?: number;
   prDraft?: "always" | "create";
   branch?: string;
+  // A label on the version PR that freezes its branch, for hand edits.
+  holdLabel?: string;
 };
 
 type RunVersionResult = {
-  // Undefined when the run was stale and left the version PR alone.
+  // Undefined when the run left the version PR alone (stale, or held).
   pullRequestNumber?: number;
+  // Why the version PR was left alone, when it was.
+  skipped?: "stale" | "held";
 };
 
 export async function runVersion({
@@ -369,6 +379,7 @@ export async function runVersion({
   prBodyMaxCharacters = MAX_CHARACTERS_PER_MESSAGE,
   branch = context.ref.replace("refs/heads/", ""),
   prDraft,
+  holdLabel = "release:hold",
 }: VersionOptions): Promise<RunVersionResult> {
   const { octokit } = github;
   let versionBranch = `changeset-release/${branch}`;
@@ -397,7 +408,24 @@ export async function runVersion({
     return true;
   };
   if (await stale()) {
-    return {};
+    return { skipped: "stale" };
+  }
+
+  // A held version PR's branch is someone's to edit by hand: leave it be.
+  const { data: openVersionPrs } = await octokit.rest.pulls.list({
+    ...context.repo,
+    state: "open",
+    head: `${context.repo.owner}:${versionBranch}`,
+    base: branch,
+  });
+  const held = openVersionPrs.find((pr) =>
+    (pr.labels ?? []).some((l) => l.name === holdLabel),
+  );
+  if (held) {
+    core.info(
+      `The version PR #${held.number} has the "${holdLabel}" label, so this run leaves its branch alone. Remove the label to let the action update it again.`,
+    );
+    return { pullRequestNumber: held.number, skipped: "held" };
   }
 
   const pre = await readPreState(cwd);
@@ -448,12 +476,8 @@ export async function runVersion({
   const finalCommitMessage =
     commitMessage !== undefined ? `${commitMessage}${preSuffix}` : defaultTitle;
 
-  const existingPullRequests = await octokit.rest.pulls.list({
-    ...context.repo,
-    state: "open",
-    head: `${context.repo.owner}:${versionBranch}`,
-    base: branch,
-  });
+  // Listed once, before the hold check above.
+  const existingPullRequests = { data: openVersionPrs };
   core.debug(
     `Existing pull requests: ${JSON.stringify(
       existingPullRequests.data,
@@ -463,7 +487,7 @@ export async function runVersion({
   );
 
   if (await stale()) {
-    return {};
+    return { skipped: "stale" };
   }
 
   await github.pushChanges({

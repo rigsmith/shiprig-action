@@ -5,6 +5,12 @@ import { GitHub } from "./github.ts";
 import { publishDecision, runPublish, runVersion } from "./run.ts";
 import { hasChangesetFiles, readReleasePlan } from "./shiprig.ts";
 import {
+  planSummary,
+  publishedSummary,
+  reasonSummary,
+  writeSummary,
+} from "./summary.ts";
+import {
   getOptionalInput,
   getRequiredInput,
   throwOnRemovedCommitModeInput,
@@ -77,11 +83,13 @@ async function main() {
   core.setOutput("has-changesets", String(hasChangesetFilesPresent));
 
   switch (true) {
-    case !hasChangesets && !hasPublishScript:
-      core.info(
-        "No changesets present or were removed by merging version PR. Not publishing because publish-script is not set.",
-      );
+    case !hasChangesets && !hasPublishScript: {
+      const reason =
+        "No changesets present or were removed by merging version PR. Not publishing because publish-script is not set.";
+      core.info(reason);
+      await writeSummary(reasonSummary(reason));
       return;
+    }
     case !hasChangesets && hasPublishScript: {
       const decision = await publishDecision({
         github,
@@ -91,6 +99,7 @@ async function main() {
       });
       core.info(decision.reason);
       if (!decision.publish) {
+        await writeSummary(reasonSummary(decision.reason));
         return;
       }
 
@@ -115,6 +124,9 @@ async function main() {
         cwd,
       });
 
+      await writeSummary(
+        publishedSummary(result.published ? result.publishedPackages : []),
+      );
       if (result.published) {
         core.setOutput("published", "true");
         core.setOutput(
@@ -136,13 +148,15 @@ async function main() {
       }
       return;
     }
-    case hasChangesets && !hasPendingReleases:
-      core.info(
-        "Changesets are present but nothing would release (they are empty, or name only ignored packages). Not creating PR",
-      );
+    case hasChangesets && !hasPendingReleases: {
+      const reason =
+        "Changesets are present but nothing would release (they are empty, or name only ignored packages). Not creating PR";
+      core.info(reason);
+      await writeSummary(reasonSummary(reason));
       return;
+    }
     case hasChangesets: {
-      const { pullRequestNumber } = await runVersion({
+      const { pullRequestNumber, skipped } = await runVersion({
         script: getOptionalInput("version-script"),
         github,
         cwd,
@@ -151,11 +165,23 @@ async function main() {
         hasPublishScript,
         prDraft,
         branch: prBaseBranch,
+        holdLabel: resolveSetting(config, "holdLabel"),
       });
 
       if (pullRequestNumber !== undefined) {
         core.setOutput("pr-number", String(pullRequestNumber));
       }
+      await writeSummary(
+        skipped === "stale"
+          ? reasonSummary(
+              "This run's commit is behind its branch, so the run for the newer commit updates the version PR.",
+            )
+          : skipped === "held"
+            ? reasonSummary(
+                `The version PR #${pullRequestNumber} is held by its label, so its branch was left alone.`,
+              )
+            : planSummary(releases, github.serverUrl, pullRequestNumber),
+      );
 
       return;
     }

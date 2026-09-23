@@ -422,7 +422,7 @@ describe("version", () => {
 
     const result = await runVersion({ github: createGithub(cwd), cwd });
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ skipped: "stale" });
     expect(mockedGithubMethods.git.getRef).toHaveBeenCalledWith(
       expect.objectContaining({ ref: "heads/some-branch" }),
     );
@@ -465,7 +465,7 @@ describe("version", () => {
 
     const result = await runVersion({ github: createGithub(cwd), cwd });
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ skipped: "stale" });
     expect(mockedGithubMethods.git.getRef).toHaveBeenCalledTimes(2);
     expect(vi.mocked(commitChangesSinceBase)).not.toHaveBeenCalled();
     expect(mockedGithubMethods.pulls.create).not.toHaveBeenCalled();
@@ -503,6 +503,64 @@ describe("version", () => {
     for (const [args] of mockedGithubMethods.git.getRef.mock.calls) {
       expect(args).toMatchObject({ ref: "heads/some-branch" });
     }
+  });
+
+  it("leaves a version PR with the hold label alone", async () => {
+    await using fixture = await createSimpleProjectFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({
+      data: [{ number: 5, labels: [{ name: "release:hold" }] }],
+    }));
+    await writeChangesets(
+      [
+        {
+          releases: [
+            { name: "changesets-dev-simple-project-pkg-a", type: "minor" },
+          ],
+          summary: "Awesome feature",
+        },
+      ],
+      cwd,
+    );
+
+    const result = await runVersion({ github: createGithub(cwd), cwd });
+
+    expect(result).toEqual({ pullRequestNumber: 5, skipped: "held" });
+    expect(vi.mocked(commitChangesSinceBase)).not.toHaveBeenCalled();
+    expect(mockedGithubMethods.pulls.create).not.toHaveBeenCalled();
+    expect(mockedGraphql).not.toHaveBeenCalled();
+  });
+
+  it("uses a hold label the user named, and ignores other labels", async () => {
+    await using fixture = await createSimpleProjectFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({
+      data: [{ number: 5, labels: [{ name: "release:hold" }] }],
+    }));
+    mockedGraphql.mockImplementation(() => ({}));
+    await writeChangesets(
+      [
+        {
+          releases: [
+            { name: "changesets-dev-simple-project-pkg-a", type: "minor" },
+          ],
+          summary: "Awesome feature",
+        },
+      ],
+      cwd,
+    );
+
+    // "release:hold" isn't the hold label here, so the PR is updated.
+    const result = await runVersion({
+      github: createGithub(cwd),
+      cwd,
+      holdLabel: "do-not-release",
+    });
+
+    expect(result.skipped).toBeUndefined();
+    expect(vi.mocked(commitChangesSinceBase)).toHaveBeenCalled();
   });
 
   it('creates a draft PR when prDraft is "create"', async () => {
