@@ -37,7 +37,7 @@ jobs:
 
       - name: Select mode
         id: select-mode
-        uses: ./select-mode
+        uses: ./select-mode # zizmor: ignore[self-repository] runs the dist/ built above, which $/ would not load
 
   version:
     name: Version
@@ -66,7 +66,7 @@ jobs:
 
       - name: Create or update release pull request
         id: changesets
-        uses: ./version
+        uses: ./version # zizmor: ignore[self-repository] runs the dist/ built above, which $/ would not load
         with:
           github-token: ${{ steps.bot-auth.outputs.token }}
           script: pnpm bump
@@ -96,7 +96,7 @@ jobs:
           permission-contents: write # to bypass branch and tag protection rules (release.ts)
 
       - name: Publish to marketplace
-        uses: ./publish
+        uses: ./publish # zizmor: ignore[self-repository] runs the dist/ built above, which $/ would not load
         with:
           github-token: ${{ steps.bot-auth.outputs.token }}
           script: pnpm release
