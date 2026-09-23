@@ -1,0 +1,21 @@
+src/releasedComments.test.ts
+  s_505a2cfce9114c::t_0729f44faa0f11 313-318
+src/releasedComments.ts
+  s_505a2cfce9114c::t_0729f44faa0f11 164-168,174-179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "c7a75fd279ec1016a39315cc73cda347d007b2f9",
+  "prompts": {},
+  "sessions": {
+    "s_505a2cfce9114c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26f83a80-3cb9-404d-829c-6b4925947f16",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "John Campion Jr <john@brightshore.io>"
+    }
+  }
+}
