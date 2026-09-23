@@ -1,4 +1,4 @@
-name: Changesets - PR Comment
+name: shiprig release - PR Comment
 description: Create or update comments on PRs
 runs:
   using: node24

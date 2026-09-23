@@ -1,10 +1,10 @@
-# changesets/action/version
+# rigsmith/shiprig-action/version
 
-This action versions packages and creates or updates a pull request with the changes.
+This action versions packages with shiprig and creates or updates a pull request with the changes.
 
 ## Requirements
 
-- Needs repo checked out and `@changesets/cli` installed
+- Needs repo checked out and **shiprig ≥ 1.20.0** on `PATH` (or at `$SHIPRIG_BIN`)
 - [Job permissions][job-permissions]:
   - `contents: write`: to commit version changes
   - `pull-requests: write`: to create pull request
@@ -16,7 +16,7 @@ This action versions packages and creates or updates a pull request with the cha
 ## Usage
 
 > [!TIP]
-> Check out [the docs](https://changesets.dev/guide/automating#how-do-i-run-the-version-and-publish-commands) to learn how to set up the version and publish workflow.
+> See [the root README](../README.md) for a complete workflow and for installing shiprig.
 
 ## API
 
@@ -31,7 +31,7 @@ This action versions packages and creates or updates a pull request with the cha
 | `pr-draft`          | Controls draft PR behavior. Use 'create' to create new version PRs as draft, or 'always' to also convert existing version PRs back to draft when updating them.                                                                         |
 | `pr-base-branch`    | Sets the base branch of the PR. Defaults to `github.ref_name`.                                                                                                                                                                          |
 | `push-with-git-cli` | Whether to use the Git CLI instead of the GitHub API to push release commits. Defaults to `false`. When using the GitHub API, commits are signed using GitHub's GPG key and attributed to the user or app that owns the `github-token`. |
-| `cwd`               | The working directory to execute Changesets in. Defaults to the root of the repository.                                                                                                                                                 |
+| `cwd`               | The working directory to run shiprig (or the custom script) in. Defaults to the root of the repository.                                                                                                                                 |
 
 | Outputs     | Description                                         |
 | ----------- | --------------------------------------------------- |
