@@ -12,8 +12,9 @@ const pkgJson = (await import("../package.json", { with: { type: "json" } }))
 const releaseLine = `v${pkgJson.version.split(".")[0]}`;
 
 // Point every example at the release line: the root action and the
-// sub-actions (rigsmith/shiprig-action/<name>@vN). The ref stops at the
-// first character that can't be in a tag, so a closing backtick survives.
+// sub-actions (rigsmith/shiprig-action/<name>@vN). Only whole version refs
+// (v1, v1.2.3) move; branch or build refs are left alone, and trailing
+// punctuation such as a closing backtick survives.
 for (const readme of [
   "README.md",
   ...fs
@@ -25,7 +26,7 @@ for (const readme of [
 ]) {
   const content = fs.readFileSync(readme, "utf8");
   const updated = content.replace(
-    /rigsmith\/shiprig-action((?:\/[a-z-]+)?)@[\w.-]+/g,
+    /rigsmith\/shiprig-action((?:\/[a-z-]+)?)@v\d+(?:\.\d+)*(?![\w/+-])/g,
     `rigsmith/shiprig-action$1@${releaseLine}`,
   );
   if (updated !== content) fs.writeFileSync(readme, updated);
