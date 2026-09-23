@@ -160,6 +160,13 @@ export async function runPublish({
   // It might also be important for custom publish scripts to have a valid git user configured.
   await github.ensureGitUser();
 
+  // Listed before publishing, which can't be undone: publishing doesn't change
+  // what's listed, and a list that fails validation should stop the run while
+  // nothing has gone out yet, not after, when the tags it published would be
+  // left unreported.
+  let packages = await listPackages(cwd);
+  let packagesByName = new Map(packages.map((x) => [x.name, x]));
+
   let changesetPublishOutput: ExecOutput;
   const outputFile = path.join(
     process.env.RUNNER_TEMP ?? (await fs.realpath(os.tmpdir())),
@@ -195,8 +202,6 @@ export async function runPublish({
     );
   }
 
-  let packages = await listPackages(cwd);
-  let packagesByName = new Map(packages.map((x) => [x.name, x]));
   let output: ChangesetsOutputEvent[];
   try {
     output = await readChangesetsOutput(outputFile);

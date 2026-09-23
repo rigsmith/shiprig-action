@@ -182,6 +182,49 @@ describe("publish", () => {
   });
 });
 
+describe("publish checks the package list first", () => {
+  it("stops before publishing when the list is malformed", async () => {
+    // A stand-in shiprig whose package list has a blank version: the run must
+    // fail before the publish script runs, not after it has published.
+    await using fixture = await gitdir({
+      "fake-shiprig": `#!/bin/sh\ncase "$1" in packages) echo '${JSON.stringify(
+        {
+          packages: [
+            {
+              name: "pkg",
+              version: " ",
+              ecosystem: "npm",
+              dir: ".",
+              changelog: "CHANGELOG.md",
+              private: false,
+              ignored: false,
+            },
+          ],
+        },
+      )}' ;; esac\nexit 0\n`,
+      ".changeset/config.json": JSON.stringify({}),
+      "package.json": JSON.stringify({ name: "pkg", version: "1.0.0" }),
+      "package-lock.json": "",
+    });
+    const cwd = fixture.path;
+    await fs.chmod(path.join(cwd, "fake-shiprig"), 0o755);
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    vi.stubEnv("SHIPRIG_BIN", path.join(cwd, "fake-shiprig"));
+
+    await expect(
+      runPublish({
+        script: "touch published",
+        github: createGithub(cwd),
+        createGithubReleases: true,
+        pushGitTags: true,
+        cwd,
+      }),
+    ).rejects.toThrow("reported a package with no version");
+    await expect(fs.access(path.join(cwd, "published"))).rejects.toThrow();
+  });
+});
+
 describe("version", () => {
   it("creates simple PR", async () => {
     await using fixture = await createSimpleProjectFixture();

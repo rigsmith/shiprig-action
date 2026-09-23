@@ -88,7 +88,7 @@ describe("listPackages fails closed", () => {
     expect(pkg.dir).toBe(path.join(fixture.path, "packages/pkg-a"));
   });
 
-  it.each(["name", "version", "ecosystem", "dir"])(
+  it.each(["name", "version", "ecosystem", "dir", "changelog"])(
     "throws on a package with an empty %s",
     async (field) => {
       await using fixture = await withPackagesJson({
@@ -96,6 +96,27 @@ describe("listPackages fails closed", () => {
       });
       await expect(listPackages(fixture.path)).rejects.toThrow(
         `reported a package with no ${field}`,
+      );
+    },
+  );
+
+  it("throws on a whitespace-only version", async () => {
+    await using fixture = await withPackagesJson({
+      packages: [{ ...good, version: "   " }],
+    });
+    await expect(listPackages(fixture.path)).rejects.toThrow(
+      "reported a package with no version",
+    );
+  });
+
+  it.each(["private", "ignored"])(
+    "throws when %s isn't a boolean",
+    async (field) => {
+      await using fixture = await withPackagesJson({
+        packages: [{ ...good, [field]: "false" }],
+      });
+      await expect(listPackages(fixture.path)).rejects.toThrow(
+        `whose ${field} isn't true or false`,
       );
     },
   );

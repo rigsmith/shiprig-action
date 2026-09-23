@@ -108,10 +108,23 @@ export async function listPackages(cwd: string): Promise<ShiprigPackage[]> {
     );
   }
   for (const p of parsed.packages) {
-    for (const field of ["name", "version", "ecosystem", "dir"] as const) {
-      if (typeof p?.[field] !== "string" || p[field] === "") {
+    for (const field of [
+      "name",
+      "version",
+      "ecosystem",
+      "dir",
+      "changelog",
+    ] as const) {
+      if (typeof p?.[field] !== "string" || p[field].trim() === "") {
         throw new Error(
           `\`shiprig packages list --json\` reported a package with no ${field}: ${JSON.stringify(p)}`,
+        );
+      }
+    }
+    for (const field of ["private", "ignored"] as const) {
+      if (typeof p?.[field] !== "boolean") {
+        throw new Error(
+          `\`shiprig packages list --json\` reported a package whose ${field} isn't true or false: ${JSON.stringify(p)}`,
         );
       }
     }
