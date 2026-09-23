@@ -12,11 +12,15 @@ shiprig-action releases itself, with itself (`.github/workflows/release.yml`).
    - does nothing if this version's tag is already on the remote, so a push
      without a new version never moves the release line;
    - commits the built `dist/` on a detached release commit;
-   - tags it `vX.Y.Z` with `shiprig tag`, which reports the tag to the action
-     through `CHANGESETS_OUTPUT`;
-   - force-pushes the `vN` branch to that commit (prereleases push only the tag).
+   - tags it `vX.Y.Z` with `shiprig tag`;
+   - force-pushes the `vN` branch to that commit (prereleases push only the tag);
+   - only then reports the tag to the action through `CHANGESETS_OUTPUT`, so a
+     failed push never leads to a release.
 
-   The action then creates the GitHub release from the changelog entry.
+   The action then creates the GitHub release from the changelog entry. If a
+   run pushed the tag but failed to create the release, the next run finds the
+   tag without a release and reports it again, so the action creates it; the
+   release line isn't moved.
 
 Users reference the action as `rigsmith/shiprig-action@v0` (the release line
 branch) or `@v0.1.0` (a tag), never `@main`: `dist/` exists only in release
@@ -27,7 +31,8 @@ commits.
 - **Settings → Actions → General → "Allow GitHub Actions to create and approve
   pull requests"** must be on, because the workflow opens the version PR with the
   default `GITHUB_TOKEN`.
-- A version PR opened with `GITHUB_TOKEN` doesn't trigger other workflows, so CI
-  doesn't run on it by itself. It only changes the version, the changelog and the
-  READMEs; to run CI anyway, close and reopen it. Upstream uses a GitHub App
-  token for this, which the workflow can adopt later.
+- A version PR opened or updated with `GITHUB_TOKEN` gets its `pull_request`
+  workflow runs (CI) in an **approval-required** state: someone with write
+  access starts them with **Approve workflows to run** on the PR. Upstream uses
+  a GitHub App token, which avoids the approval step; the workflow can adopt one
+  later.
