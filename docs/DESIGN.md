@@ -86,23 +86,13 @@ action side in #7. Row 7 is phase 4.
 events, and `status` gating as canon does (rigsmith#445 through rigsmith#449). Done, released in
 shiprig 1.20.0.
 
-**2. The root action on shiprig.** Rows 1–6 and 8 behind `src/shiprig.ts` (#7).
-Still to do before it's usable:
+**2. The root action on shiprig.** Rows 1–6 and 8 behind `src/shiprig.ts` (#7),
+the README (#9), and the action releasing itself
+([RELEASING.md](RELEASING.md)). Done, released as v0.1.0.
 
-- rewrite the README for shiprig (#8);
-- release the action: it releases itself, with itself
-  ([docs/RELEASING.md](RELEASING.md)), from a tag or the `vN` branch, never `main`;
-- dogfood it by replacing `rigsmith/.github/actions/release`, then retire that
-  action.
-
-**3. Roadmap** (from rigsmith's `docs/CHANGERIG-ACTION-ROADMAP.md`). Upstream's
-design already covers two of its items: prerelease graduation is detected, and
-the PR body carries each package's changelog entry. What remains:
-
-- publish only when the version PR merges (a label or commit check, instead of
-  "no changesets means publish");
-- a non-interactive `Release-As` / version override (engine flag, action input);
-- a version PR per package, or grouped, as an option.
+**3. Roadmap.** [ROADMAP.md](ROADMAP.md): dogfooding in rigsmith, a
+`.shiprig.json` config file, publishing only when the version PR merges, and
+the rest.
 
 **4. The split sub-actions** (row 7), for the build → pack → trusted-publish
 job split.
