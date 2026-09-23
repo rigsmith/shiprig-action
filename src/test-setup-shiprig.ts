@@ -15,10 +15,15 @@ export default function setup() {
     help = execFileSync(bin, ["packages", "list", "--help"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
+      // A binary that hangs would otherwise hold every test behind it.
+      timeout: 30_000,
     });
   } catch (err) {
+    const timedOut = (err as { code?: string }).code === "ETIMEDOUT";
     throw new Error(
-      `Can't run shiprig at ${bin}: run \`pnpm install\`, or set SHIPRIG_BIN to a shiprig >= 1.20.0.`,
+      timedOut
+        ? `shiprig at ${bin} didn't answer \`packages list --help\` within 30s.`
+        : `Can't run shiprig at ${bin}: run \`pnpm install\`, or set SHIPRIG_BIN to a shiprig >= 1.20.0.`,
       { cause: err },
     );
   }
