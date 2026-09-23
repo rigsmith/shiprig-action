@@ -160,12 +160,11 @@ export async function runPublish({
   // It might also be important for custom publish scripts to have a valid git user configured.
   await github.ensureGitUser();
 
-  // Listed before publishing, which can't be undone: publishing doesn't change
-  // what's listed, and a list that fails validation should stop the run while
-  // nothing has gone out yet, not after, when the tags it published would be
-  // left unreported.
-  let packages = await listPackages(cwd);
-  let packagesByName = new Map(packages.map((x) => [x.name, x]));
+  // Checked before publishing, which can't be undone: a package list that
+  // fails validation stops the run while nothing has gone out yet, not after,
+  // when the tags it published would be left unreported. It's read again once
+  // the script has run (below), since a custom script may change versions.
+  await listPackages(cwd);
 
   let changesetPublishOutput: ExecOutput;
   const outputFile = path.join(
@@ -202,6 +201,10 @@ export async function runPublish({
     );
   }
 
+  // The versions as they stand after the script, which is what its tag
+  // events name.
+  let packages = await listPackages(cwd);
+  let packagesByName = new Map(packages.map((x) => [x.name, x]));
   let output: ChangesetsOutputEvent[];
   try {
     output = await readChangesetsOutput(outputFile);

@@ -225,6 +225,45 @@ describe("publish checks the package list first", () => {
   });
 });
 
+describe("publish reads versions after the script", () => {
+  it("reports the version a custom script published, not the one before it ran", async () => {
+    await using fixture = await createSimpleProjectFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    // A script that bumps pkg-a and reports the tag for the new version.
+    await fs.writeFile(
+      path.join(cwd, "bump-and-tag.mjs"),
+      `import fs from "node:fs";
+const file = "packages/pkg-a/package.json";
+const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
+pkg.version = "9.9.9";
+fs.writeFileSync(file, JSON.stringify(pkg));
+fs.appendFileSync(process.env.CHANGESETS_OUTPUT, JSON.stringify({
+  type: "git-tag",
+  tag: "changesets-dev-simple-project-pkg-a@9.9.9",
+  packageName: "changesets-dev-simple-project-pkg-a",
+}) + "\\n");
+`,
+    );
+
+    const result = await runPublish({
+      script: "node bump-and-tag.mjs",
+      github: createGithub(cwd),
+      createGithubReleases: false,
+      pushGitTags: false,
+      cwd,
+    });
+
+    expect(result).toMatchObject({
+      published: true,
+      publishedPackages: [
+        { name: "changesets-dev-simple-project-pkg-a", version: "9.9.9" },
+      ],
+    });
+  });
+});
+
 describe("version", () => {
   it("creates simple PR", async () => {
     await using fixture = await createSimpleProjectFixture();
