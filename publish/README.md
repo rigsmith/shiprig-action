@@ -2,12 +2,13 @@
 
 This action publishes packages with shiprig (by default `shiprig publish --yes`), then pushes the git tags it reports and creates their GitHub releases.
 
-Publishing from a pack directory (`pack-dir-artifact-id`) isn't supported yet: shiprig has no `publish --from-pack-dir`, so the input is rejected before anything is downloaded.
+Publishing from a pack directory isn't supported yet: shiprig has no `publish --from-pack-dir`, so `pack-dir-artifact-id` is rejected before anything is downloaded, whether or not a custom `script` is given.
 
 ## Requirements
 
 - Needs repo checked out and **shiprig ≥ 1.20.0** on `PATH` (or at `$SHIPRIG_BIN`)
 - [Job permissions][job-permissions]:
+  - `contents: write`: to push the git tags and create GitHub releases
   - `id-token: write`: if using [trusted publishing](https://docs.npmjs.com/trusted-publishers), which npm only accepts from GitHub-hosted runners
 - [Workflow triggers][workflow-triggers]: _any_
 

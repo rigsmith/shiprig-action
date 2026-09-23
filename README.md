@@ -11,8 +11,8 @@ same flow:
    `changeset-release/<base>`) that bumps versions and writes changelogs, and
    updates it as more changes land.
 2. When that PR merges, it **publishes**, pushes the **git tags**, and creates a
-   **GitHub release** for each package, using the package's changelog entry as
-   the release notes.
+   **GitHub release** for each package that has a changelog, using its changelog
+   entry as the release notes.
 
 What differs is behind it: the Changesets CLI only knows npm, while shiprig
 versions, publishes and tags every ecosystem it discovers, and can take the
@@ -32,6 +32,8 @@ release from conventional commits instead of, or as well as, changeset files.
   Actions to create and approve pull requests**.
 
 ## Usage
+
+<a id="with-publishing"></a>
 
 ### A version PR, publishing when it merges
 
@@ -117,9 +119,9 @@ with:
 ```
 
 Setting a `GITHUB_TOKEN` environment variable does not configure the action.
-With a token from a GitHub App or a personal account, the version PR runs your
-other workflows' `pull_request` checks, which PRs opened with the default token
-don't.
+A version PR opened with the default token gets its `pull_request` checks in an
+approval-required state (start them with **Approve workflows to run**); with a
+token from a GitHub App or a personal account they run straight away.
 
 ## Installing shiprig
 
@@ -148,8 +150,9 @@ winget and the rest.
 - `has-changesets`: whether changeset files exist (counting the ones waiting in
   `.changeset/pre/` after `pre exit`). A release that comes only from
   conventional commits doesn't set it.
-- `published`, `published-packages`: what `publish-script` published, as
-  reported through the tag events.
+- `published`, `published-packages`: the packages whose tags `publish-script`
+  reported through `CHANGESETS_OUTPUT`. They reflect those reports, not a check
+  against the registry.
 - `pr-number`: the version PR opened or updated.
 
 ## Sub-actions
@@ -197,12 +200,12 @@ anything else that looks for it keep working.
 | `push-with-git-cli`      | Whether to use the Git CLI instead of the GitHub API to push release commits and tags. Defaults to `false`. When using the GitHub API, commits and tags are signed using GitHub's GPG key and attributed to the user or app that owns the `github-token`.                             |
 | `cwd`                    | The working directory to run shiprig in. Defaults to the root of the repository.                                                                                                                                                                                                      |
 
-| Outputs              | Description                                                                                                                                                                                   |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `published`          | A "true" or "false" string value to indicate whether anything was published                                                                                                                   |
-| `published-packages` | A JSON array to present the published packages. The format is `[{"name": "@xx/xx", "version": "1.2.0"}, {"name": "@xx/xy", "version": "0.8.9"}]`                                              |
-| `has-changesets`     | A "true" or "false" string value about whether changeset files exist (including those waiting in .changeset/pre/ after `pre exit`). A release from conventional commits alone doesn't set it. |
-| `pr-number`          | The pull request number that was created or updated                                                                                                                                           |
+| Outputs              | Description                                                                                                                                                                                                                               |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `published`          | A "true" or "false" string value to indicate whether the publish script reported any tag (a `git-tag` event through CHANGESETS_OUTPUT, which `shiprig publish` and `shiprig tag` write). It reflects those reports, not a registry check. |
+| `published-packages` | A JSON array of the packages whose tags the publish script reported, e.g. `[{"name": "@xx/xx", "version": "1.2.0"}, {"name": "@xx/xy", "version": "0.8.9"}]`                                                                              |
+| `has-changesets`     | A "true" or "false" string value about whether changeset files exist (including those waiting in .changeset/pre/ after `pre exit`). A release from conventional commits alone doesn't set it.                                             |
+| `pr-number`          | The pull request number that was created or updated                                                                                                                                                                                       |
 
 <!-- api-end -->
 
