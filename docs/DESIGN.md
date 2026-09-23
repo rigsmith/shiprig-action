@@ -90,9 +90,11 @@ shiprig 1.20.0.
 the README (#9), and the action releasing itself
 ([RELEASING.md](RELEASING.md)). Done, released as v0.1.0.
 
-**3. Roadmap.** [ROADMAP.md](ROADMAP.md): dogfooding in rigsmith, a
-`.shiprig.jsonc` config file, publishing only when the version PR merges, and
-the rest.
+**3. Roadmap.** [ROADMAP.md](ROADMAP.md). Done so far: dogfooding in
+rigsmith (it releases through this action as the shipRig App), publishing only
+when the version PR merges (`publish-on`, v0.3.0), a stale-run guard, and the
+`shiprig-action.jsonc` settings file (v0.4.0). Release-As and a PR per package
+are next in line.
 
 **4. The split sub-actions** (row 7), for the build → pack → trusted-publish
 job split.
