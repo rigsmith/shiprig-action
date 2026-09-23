@@ -1,0 +1,44 @@
+# shiprig-action releases itself, with itself: on each push to main the root
+# action (built from this checkout) either opens/updates the version PR
+# (`pnpm bump`: shiprig version + the @vN references in the READMEs), or, once
+# that PR has merged, runs `pnpm release`: dist/ committed on a release commit,
+# tagged vX.Y.Z, the vN branch moved to it, and a GitHub release created from
+# the changelog. Users take the action from a tag or vN, never main.
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write # version commits, the release commit, tag and vN branch, GitHub releases
+      pull-requests: write # the version PR
+    steps:
+      - uses: $/.github/actions/ci-setup
+        with:
+          skip-cache: true # avoid cache poisoning attacks
+
+      - name: Build
+        run: pnpm build
+
+      - name: Version PR or release
+        uses: ./
+        env:
+          # The lockfile-pinned shiprig (devDependency), for the action itself;
+          # the scripts find it on PATH through pnpm.
+          SHIPRIG_BIN: ${{ github.workspace }}/node_modules/.bin/shiprig
+        with:
+          version-script: pnpm bump
+          publish-script: pnpm release

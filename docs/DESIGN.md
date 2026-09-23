@@ -90,8 +90,8 @@ shiprig 1.20.0.
 Still to do before it's usable:
 
 - rewrite the README for shiprig (#8);
-- release the action (upstream force-adds `dist/` in release commits, so it's
-  used from a tag, never `main`);
+- release the action: it releases itself, with itself
+  ([docs/RELEASING.md](RELEASING.md)), from a tag or the `vN` branch, never `main`;
 - dogfood it by replacing `rigsmith/.github/actions/release`, then retire that
   action.
 
