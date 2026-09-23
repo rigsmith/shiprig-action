@@ -57,14 +57,18 @@ async function main() {
   // case (changesets that are empty or name only ignored packages).
   const releases = await readReleasePlan(cwd);
   const hasPendingReleases = releases.length > 0;
-  let hasChangesets = hasPendingReleases || (await hasChangesetFiles(cwd));
+  // The has-changesets output keeps its documented meaning (changeset files
+  // exist); a conventional-commit release has none. Release work, from files
+  // or commits, is what drives the flow below.
+  const hasChangesetFilesPresent = await hasChangesetFiles(cwd);
+  let hasChangesets = hasPendingReleases || hasChangesetFilesPresent;
 
   let publishScript = core.getInput("publish-script");
   let hasPublishScript = !!publishScript;
 
   core.setOutput("published", "false");
   core.setOutput("published-packages", "[]");
-  core.setOutput("has-changesets", String(hasChangesets));
+  core.setOutput("has-changesets", String(hasChangesetFilesPresent));
 
   switch (true) {
     case !hasChangesets && !hasPublishScript:

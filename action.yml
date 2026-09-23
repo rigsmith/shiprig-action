@@ -12,7 +12,7 @@ inputs:
     required: false
     default: ${{ github.token }}
   publish-script:
-    description: "The command to use to build and publish packages, e.g. `shiprig publish --yes`. Its tags are reported through CHANGESETS_OUTPUT, which shiprig reads."
+    description: "The command to use to build and publish packages, e.g. `shiprig publish --yes`. The action sets CHANGESETS_OUTPUT to a file; `shiprig publish` (or `shiprig tag`) writes an event there for each tag it creates, and the action reads them back to push the tags and create releases."
     required: false
   version-script:
     description: "The command to update versions, edit CHANGELOGs, and consume changesets. Defaults to `shiprig version --yes`"

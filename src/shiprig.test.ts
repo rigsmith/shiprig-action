@@ -124,3 +124,33 @@ describe("changeset files and pre state", () => {
     expect(await readPreState(none.path)).toBeUndefined();
   });
 });
+
+describe("readPreState fails closed", () => {
+  it.each([
+    ["malformed JSON", "{ not json"],
+    ["pre mode without a tag", JSON.stringify({ mode: "pre" })],
+    ["a non-string tag", JSON.stringify({ mode: "pre", tag: 1 })],
+    ["an unknown mode", JSON.stringify({ mode: "draft", tag: "next" })],
+  ])("throws on %s", async (_, content) => {
+    await using fixture = await workspace({ ".changeset/pre.json": content });
+    await expect(readPreState(fixture.path)).rejects.toThrow(/pre\.json/);
+  });
+
+  it("throws when pre.json exists but can't be read", async () => {
+    // A directory where the file should be: exists, unreadable as a file.
+    await using fixture = await workspace({ ".changeset/pre.json/x": "" });
+    await expect(readPreState(fixture.path)).rejects.toThrow(
+      /Could not read .*pre\.json/,
+    );
+  });
+
+  it("reads exit mode with its tag", async () => {
+    await using fixture = await workspace({
+      ".changeset/pre.json": JSON.stringify({ mode: "exit", tag: "rc" }),
+    });
+    expect(await readPreState(fixture.path)).toEqual({
+      mode: "exit",
+      tag: "rc",
+    });
+  });
+});

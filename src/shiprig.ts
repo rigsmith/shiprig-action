@@ -190,20 +190,43 @@ export async function hasChangesetFiles(cwd: string): Promise<boolean> {
   );
 }
 
-/** Prerelease mode, from .changeset/pre.json (the v3 shape: mode and tag). */
+/**
+ * Prerelease mode, from .changeset/pre.json (the v3 shape: mode and tag).
+ * Only a missing file means "not in prerelease". A file that can't be read or
+ * parsed, or has no valid mode and string tag, is an error rather than a
+ * silent normal release or an "(undefined)" PR title.
+ */
 export async function readPreState(
   cwd: string,
 ): Promise<{ mode: "pre" | "exit"; tag: string } | undefined> {
+  const file = path.join(await workspaceRoot(cwd), ".changeset", "pre.json");
+  let raw: string;
   try {
-    const raw = await fs.readFile(
-      path.join(await workspaceRoot(cwd), ".changeset", "pre.json"),
-      "utf8",
-    );
-    const pre = JSON.parse(raw);
-    return pre?.mode === "pre" || pre?.mode === "exit" ? pre : undefined;
-  } catch {
-    return undefined;
+    raw = await fs.readFile(file, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw new Error(`Could not read ${file}`, { cause: err });
   }
+  let pre: unknown;
+  try {
+    pre = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`${file} is not valid JSON`, { cause: err });
+  }
+  if (
+    typeof pre !== "object" ||
+    pre === null ||
+    !("mode" in pre) ||
+    (pre.mode !== "pre" && pre.mode !== "exit") ||
+    !("tag" in pre) ||
+    typeof pre.tag !== "string" ||
+    pre.tag === ""
+  ) {
+    throw new Error(
+      `${file} is not a valid prerelease state: expected { "mode": "pre" | "exit", "tag": "<tag>" }`,
+    );
+  }
+  return { mode: pre.mode, tag: pre.tag };
 }
 
 /**
