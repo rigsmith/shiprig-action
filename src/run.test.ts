@@ -467,6 +467,40 @@ describe("version", () => {
     expect(mockedGithubMethods.pulls.create).not.toHaveBeenCalled();
   });
 
+  it("checks the branch the run is on, not a different pr-base-branch", async () => {
+    await using fixture = await createSimpleProjectFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({ data: [] }));
+    mockedGithubMethods.pulls.create.mockImplementationOnce(() => ({
+      data: { number: 123 },
+    }));
+    await writeChangesets(
+      [
+        {
+          releases: [
+            { name: "changesets-dev-simple-project-pkg-a", type: "minor" },
+          ],
+          summary: "Awesome feature",
+        },
+      ],
+      cwd,
+    );
+
+    // The run is on some-branch (the mocked context.ref); the PR targets main.
+    const result = await runVersion({
+      github: createGithub(cwd),
+      cwd,
+      branch: "main",
+    });
+
+    expect(result).toEqual({ pullRequestNumber: 123 });
+    expect(mockedGithubMethods.git.getRef).toHaveBeenCalledTimes(2);
+    for (const [args] of mockedGithubMethods.git.getRef.mock.calls) {
+      expect(args).toMatchObject({ ref: "heads/some-branch" });
+    }
+  });
+
   it('creates a draft PR when prDraft is "create"', async () => {
     await using fixture = await createSimpleProjectFixture();
     const cwd = fixture.path;

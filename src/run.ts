@@ -361,12 +361,19 @@ export async function runVersion({
   // a version PR that was just merged. If the base has moved past this run's
   // commit, the newer run owns the version PR, so this one leaves it alone.
   // Checked before any work, and again just before the push, since the base
-  // can move while this run is versioning.
+  // can move while this run is versioning. What's checked is the branch the
+  // run is on (its commit is that branch's), which is the base unless
+  // pr-base-branch names another; a run that isn't on a branch has nothing
+  // newer to defer to.
+  const runBranch = context.ref.startsWith("refs/heads/")
+    ? context.ref.slice("refs/heads/".length)
+    : undefined;
   const stale = async () => {
-    const newerHead = await github.baseMovedPast(branch, context.sha);
+    if (runBranch === undefined) return false;
+    const newerHead = await github.baseMovedPast(runBranch, context.sha);
     if (newerHead === undefined) return false;
     core.info(
-      `${branch} has moved on to ${newerHead.slice(0, 7)} since this run's commit ` +
+      `${runBranch} has moved on to ${newerHead.slice(0, 7)} since this run's commit ` +
         `(${context.sha.slice(0, 7)}); the run for that commit updates the version PR, so this one leaves it alone.`,
     );
     return true;
