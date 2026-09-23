@@ -92,7 +92,10 @@ export function getChangelogEntry(changelog: string, version: string) {
   }
 
   return {
+    // The whole changelog when the version has no heading, as upstream has it.
     content: changelog.slice(headingStartInfo?.index, endIndex).trim(),
+    // Whether the version has a heading: when it doesn't, content isn't its.
+    found: headingStartInfo !== undefined,
     highestLevel,
   };
 }

@@ -60,6 +60,13 @@ version-pr-merge`, the default, publishes on the push that merges
   release-please and semantic-release do. Found through the changesets the
   version PR's merge consumed, so a monorepo PR is credited per package.
   Commit-sourced releases (`versioning.source: commits`) don't get them yet.
+- **Hold label, job summary, released-in for commit releases** (v0.6.0). A
+  `release:hold` label on the version PR freezes its branch for hand edits;
+  every run writes what it did to the job summary; a release from
+  conventional commits credits the pull requests its changelog sections
+  reference. Per-package skip (one package waits while another ships) needs
+  shiprig to version only some packages, like canon's `changeset version
+--ignore`, first.
 
 ## Next
 

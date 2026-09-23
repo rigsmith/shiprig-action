@@ -101,12 +101,24 @@ out in, linked to their releases:
 
 The pull requests come from the changesets the version PR's merge consumed, so
 in a monorepo a pull request is credited only for the packages its changeset
-named. Re-runs don't comment twice, and a comment that fails only warns: the
+named. A release from conventional commits consumes no changesets; there the
+pull requests are the ones each package's changelog section references
+(`changelog-github` links them, `changelog-git` names their commits), and the
+default changelog references none. Re-runs don't comment twice, and a comment that fails only warns: the
 release has already gone out. The comments come from the version PR's merge
 commit, so they're posted by the run for that merge (or a re-run of it); a
 run started by hand on a later commit publishes without commenting. It needs Pull requests (write) on the token, as
 the workflow above has. Turn it off with `comment-released-prs: false` (or
 `commentReleasedPrs` in `shiprig-action.jsonc`).
+
+**Holding the version PR.** Add the `release:hold` label to the version PR and
+runs leave its branch alone, so it can be edited by hand; remove the label and
+the next run rebuilds it. `hold-label` (or `holdLabel` in
+`shiprig-action.jsonc`) names a different label.
+
+**Job summary.** Every run writes what it did to its summary page: the release
+plan and the version PR, what was published and tagged, or why nothing
+happened.
 
 **Stale runs.** If the branch a run is on no longer points at the run's commit
 when the run starts, or when it would push (queued runs don't always start in
@@ -145,7 +157,7 @@ keeps its settings in `release-please-config.json`:
   directory the action runs in (`cwd`). More than one is an error that names
   them all.
 - **Keys:** `prTitle`, `commitMessage`, `prDraft`, `prBaseBranch`,
-  `publishOn`, `createGithubReleases`, `pushGitTags`, `pushWithGitCli` and `commentReleasedPrs`, each
+  `publishOn`, `createGithubReleases`, `pushGitTags`, `pushWithGitCli`, `commentReleasedPrs` and `holdLabel`, each
   standing in for the input of the same name. An unknown key or a wrong type
   fails the run; comments and trailing commas are fine.
 - **Precedence:** an input set in the workflow wins, then the file, then the
@@ -293,6 +305,7 @@ message change: `chore: release 1.2.0` rather than `Version Packages`. Set
 | `create-github-releases` | Whether to create GitHub releases after publish                                                                                                                                                                                                                                       |
 | `push-git-tags`          | Whether to create git tags after publish. If `create-github-releases` is set to `true`, this option will also always be `true`.                                                                                                                                                       |
 | `comment-released-prs`   | Whether to comment "released in" on each pull request whose changeset shipped, once the tags are pushed. Defaults to `true`.                                                                                                                                                          |
+| `hold-label`             | A label on the version PR that stops the action from updating its branch, for hand edits. Defaults to `release:hold`.                                                                                                                                                                 |
 | `publish-on`             | When the publish path runs once nothing is pending: `version-pr-merge` (default), only on the push that merges the version PR and on runs started by hand; `every-push`, on every push, as changesets/action does.                                                                    |
 | `push-with-git-cli`      | Whether to use the Git CLI instead of the GitHub API to push release commits and tags. Defaults to `false`. When using the GitHub API, commits and tags are signed using GitHub's GPG key and attributed to the user or app that owns the `github-token`.                             |
 | `cwd`                    | The working directory to run shiprig in. Defaults to the root of the repository.                                                                                                                                                                                                      |

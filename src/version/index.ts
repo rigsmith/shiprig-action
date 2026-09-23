@@ -49,6 +49,7 @@ async function main() {
     hasPublishScript: true,
     prDraft,
     branch: prBaseBranch,
+    holdLabel: resolveSetting(config, "holdLabel"),
   });
 
   if (pullRequestNumber !== undefined) {

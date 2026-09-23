@@ -80,6 +80,9 @@ type PublishResult =
   | {
       published: true;
       publishedPackages: PublishedPackage[];
+      // The same packages with their tags, for the job summary; the
+      // published-packages output keeps upstream's shape.
+      released: (PublishedPackage & { tag: string })[];
       exitCode: number;
     }
   | {
@@ -250,11 +253,22 @@ export async function runPublish({
     await commentReleasedPrsOn({
       octokit,
       sha: context.sha,
-      released: releases.map(({ pkg, tag }) => ({
-        name: pkg.name,
-        version: pkg.version,
-        tag,
-      })),
+      released: await Promise.all(
+        releases.map(async ({ pkg, tag }) => {
+          const entry = getChangelogEntry(
+            (await readChangelog(pkg)) ?? "",
+            pkg.version,
+          );
+          return {
+            name: pkg.name,
+            version: pkg.version,
+            tag,
+            // No heading for this version: the rest of the changelog is
+            // older releases, whose PRs this one didn't ship.
+            notes: entry.found ? entry.content : undefined,
+          };
+        }),
+      ),
       serverUrl: github.serverUrl,
     });
   }
@@ -265,6 +279,11 @@ export async function runPublish({
       publishedPackages: releases.map(({ pkg }) => ({
         name: pkg.name,
         version: pkg.version,
+      })),
+      released: releases.map(({ pkg, tag }) => ({
+        name: pkg.name,
+        version: pkg.version,
+        tag,
       })),
       exitCode: changesetPublishOutput.exitCode,
     };
@@ -352,11 +371,15 @@ type VersionOptions = {
   prBodyMaxCharacters?: number;
   prDraft?: "always" | "create";
   branch?: string;
+  // A label on the version PR that freezes its branch, for hand edits.
+  holdLabel?: string;
 };
 
 type RunVersionResult = {
-  // Undefined when the run was stale and left the version PR alone.
+  // Undefined when the run left the version PR alone (stale, or held).
   pullRequestNumber?: number;
+  // Why the version PR was left alone, when it was.
+  skipped?: "stale" | "held";
 };
 
 export async function runVersion({
@@ -369,6 +392,7 @@ export async function runVersion({
   prBodyMaxCharacters = MAX_CHARACTERS_PER_MESSAGE,
   branch = context.ref.replace("refs/heads/", ""),
   prDraft,
+  holdLabel = "release:hold",
 }: VersionOptions): Promise<RunVersionResult> {
   const { octokit } = github;
   let versionBranch = `changeset-release/${branch}`;
@@ -397,7 +421,33 @@ export async function runVersion({
     return true;
   };
   if (await stale()) {
-    return {};
+    return { skipped: "stale" };
+  }
+
+  // A held version PR's branch is someone's to edit by hand: leave it be.
+  const listVersionPrs = async () =>
+    (
+      await octokit.rest.pulls.list({
+        ...context.repo,
+        state: "open",
+        head: `${context.repo.owner}:${versionBranch}`,
+        base: branch,
+      })
+    ).data;
+  const held = (prs: Awaited<ReturnType<typeof listVersionPrs>>) => {
+    const pr = prs.find((p) =>
+      (p.labels ?? []).some((l) => l.name === holdLabel),
+    );
+    if (pr) {
+      core.info(
+        `The version PR #${pr.number} has the "${holdLabel}" label, so this run leaves its branch alone. Remove the label to let the action update it again.`,
+      );
+    }
+    return pr;
+  };
+  const heldEarly = held(await listVersionPrs());
+  if (heldEarly) {
+    return { pullRequestNumber: heldEarly.number, skipped: "held" };
   }
 
   const pre = await readPreState(cwd);
@@ -423,20 +473,6 @@ export async function runVersion({
   let changedPackages = (await listPackages(cwd)).filter(
     (p) => versionsBefore.get(`${p.ecosystem}:${p.dir}`) !== p.version,
   );
-  let changedPackagesInfoPromises = Promise.all(
-    changedPackages.map(async (pkg) => {
-      let entry = getChangelogEntry(
-        (await readChangelog(pkg)) ?? "",
-        pkg.version,
-      );
-      return {
-        highestLevel: entry.highestLevel,
-        private: pkg.private,
-        content: entry.content,
-        header: `## ${pkg.name}@${pkg.version}`,
-      };
-    }),
-  );
 
   // A title or message the user set keeps upstream's prerelease suffix. The
   // default names the versions instead, which already carry the tag
@@ -448,12 +484,34 @@ export async function runVersion({
   const finalCommitMessage =
     commitMessage !== undefined ? `${commitMessage}${preSuffix}` : defaultTitle;
 
-  const existingPullRequests = await octokit.rest.pulls.list({
-    ...context.repo,
-    state: "open",
-    head: `${context.repo.owner}:${versionBranch}`,
-    base: branch,
-  });
+  // Awaited here, before the checks below, so nothing can change between
+  // them and the push, and no early return leaves a read unhandled.
+  const changedPackagesInfo = (
+    await Promise.all(
+      changedPackages.map(async (pkg) => {
+        let entry = getChangelogEntry(
+          (await readChangelog(pkg)) ?? "",
+          pkg.version,
+        );
+        return {
+          highestLevel: entry.highestLevel,
+          private: pkg.private,
+          content: entry.content,
+          header: `## ${pkg.name}@${pkg.version}`,
+        };
+      }),
+    )
+  )
+    .filter((x) => x)
+    .sort(sortTheThings);
+
+  // Listed again: the hold label may have been added, or another run may have
+  // opened the PR, while the version script ran.
+  const existingPullRequests = { data: await listVersionPrs() };
+  const heldLate = held(existingPullRequests.data);
+  if (heldLate) {
+    return { pullRequestNumber: heldLate.number, skipped: "held" };
+  }
   core.debug(
     `Existing pull requests: ${JSON.stringify(
       existingPullRequests.data,
@@ -463,17 +521,13 @@ export async function runVersion({
   );
 
   if (await stale()) {
-    return {};
+    return { skipped: "stale" };
   }
 
   await github.pushChanges({
     branch: versionBranch,
     message: finalCommitMessage,
   });
-
-  const changedPackagesInfo = (await changedPackagesInfoPromises)
-    .filter((x) => x)
-    .sort(sortTheThings);
 
   let prBody = await getVersionPrBody({
     hasPublishScript,

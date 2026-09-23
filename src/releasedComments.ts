@@ -7,7 +7,14 @@ import { context } from "@actions/github";
 // changesets the version PR's merge consumed, so a monorepo PR is credited
 // only for the packages its changeset named, as the changelog credits it.
 
-export type ReleasedPackage = { name: string; version: string; tag: string };
+export type ReleasedPackage = {
+  name: string;
+  version: string;
+  tag: string;
+  // This version's changelog section, for releases that consumed no
+  // changesets (versioning.source: commits).
+  notes?: string;
+};
 
 // The parts of Octokit this uses, so tests can stand one in.
 export type CommentOctokit = {
@@ -21,6 +28,7 @@ export type CommentOctokit = {
         page: number;
       }): Promise<{
         data: {
+          sha?: string;
           parents: { sha: string }[];
           files?: { filename: string; status?: string }[];
         };
@@ -104,26 +112,33 @@ export async function commentReleasedPrs({
         CHANGESET.test(f.filename) &&
         f.filename.split("/").at(-1)?.toLowerCase() !== "readme.md",
     );
-    if (!parent || consumed.length === 0) {
-      core.info(
-        "No changesets were consumed by this commit, so there are no pull requests to comment on.",
-      );
-      return [];
-    }
-
-    // pull request -> the released packages its changesets named
+    // pull request -> the released packages it's credited for
     const credited = new Map<number, Set<ReleasedPackage>>();
-    for (const file of consumed) {
+    const credit = (pr: number, r: ReleasedPackage) => {
+      const set = credited.get(pr) ?? new Set();
+      set.add(r);
+      credited.set(pr, set);
+    };
+    if (!parent || consumed.length === 0) {
+      // A release from conventional commits consumes no changesets; its
+      // pull requests are the ones its changelog sections reference.
+      await creditFromNotes(octokit, released, credit);
+      if (credited.size === 0) {
+        core.info(
+          "No changesets were consumed and the changelog references no pull requests or commits, so there are none to comment on.",
+        );
+        return [];
+      }
+    }
+    for (const file of parent ? consumed : []) {
       // One changeset that can't be traced costs only its own attribution.
       try {
         const text = await readAt(octokit, file.filename, parent);
         const named = released.filter((r) => namesPackage(text, r.name));
         if (named.length === 0) continue;
-        const pr = await pullRequestThatAdded(octokit, file.filename, parent);
+        const pr = await pullRequestThatAdded(octokit, file.filename, parent!);
         if (pr === undefined) continue;
-        const set = credited.get(pr) ?? new Set();
-        for (const r of named) set.add(r);
-        credited.set(pr, set);
+        for (const r of named) credit(pr, r);
       } catch (err) {
         core.warning(
           `Couldn't find the pull request that added ${file.filename}: ${(err as Error).message}`,
@@ -265,4 +280,80 @@ async function pullRequestThatAdded(
       commit_sha: adding,
     });
   return pulls.find((p) => p.merged_at != null)?.number;
+}
+
+/**
+ * The pull requests and commits a changelog section references:
+ * changelog-github's `[#12](…/pull/12)` links and `` [`abc1234`](…) `` commits,
+ * and changelog-git's `- abc1234: …` prefixes. Pull request links count only
+ * for this repository.
+ */
+export function referencesIn(notes: string): {
+  pullRequests: number[];
+  commits: string[];
+} {
+  const { owner, repo } = context.repo;
+  const escaped = `${owner}/${repo}`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pullRequests = [
+    ...notes.matchAll(new RegExp(`/${escaped}/pull/(\\d+)`, "g")),
+  ].map((m) => Number(m[1]));
+  const commits = [
+    ...notes.matchAll(/\[`([0-9a-f]{7,40})`\]/g),
+    ...notes.matchAll(/^\s*-\s+([0-9a-f]{7,40}):\s/gm),
+  ].map((m) => m[1]);
+  return {
+    pullRequests: [...new Set(pullRequests)],
+    commits: [...new Set(commits)],
+  };
+}
+
+// Credits each released package's pull requests from its changelog section:
+// the ones it links, and the merged pull requests of the commits it names.
+// One reference that can't be looked up costs only itself. A commit named in
+// several packages' sections is looked up once.
+async function creditFromNotes(
+  octokit: CommentOctokit,
+  released: ReleasedPackage[],
+  credit: (pr: number, r: ReleasedPackage) => void,
+): Promise<void> {
+  // Answers only: a lookup that failed is tried again for the next package.
+  const prOfCommit = new Map<string, number | undefined>();
+  const lookUp = async (
+    commit: string,
+  ): Promise<{ pr: number | undefined } | undefined> => {
+    try {
+      const { data: full } = await octokit.rest.repos.getCommit({
+        ...context.repo,
+        ref: commit,
+        per_page: 1,
+        page: 1,
+      });
+      const sha = full.sha ?? commit;
+      const { data: pulls } =
+        await octokit.rest.repos.listPullRequestsAssociatedWithCommit({
+          ...context.repo,
+          commit_sha: sha,
+        });
+      return { pr: pulls.find((p) => p.merged_at != null)?.number };
+    } catch (err) {
+      core.warning(
+        `Couldn't find the pull request for commit ${commit}: ${(err as Error).message}`,
+      );
+      return undefined;
+    }
+  };
+  for (const r of released) {
+    if (!r.notes) continue;
+    const { pullRequests, commits } = referencesIn(r.notes);
+    for (const pr of pullRequests) credit(pr, r);
+    if (pullRequests.length > 0) continue; // the links already name them
+    for (const commit of commits) {
+      if (!prOfCommit.has(commit)) {
+        const found = await lookUp(commit);
+        if (found) prOfCommit.set(commit, found.pr);
+      }
+      const pr = prOfCommit.get(commit);
+      if (pr !== undefined) credit(pr, r);
+    }
+  }
 }

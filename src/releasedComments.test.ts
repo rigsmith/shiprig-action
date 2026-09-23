@@ -5,6 +5,7 @@ import {
   commentBody,
   commentReleasedPrs,
   namesPackage,
+  referencesIn,
 } from "./releasedComments.ts";
 
 vi.mock("@actions/github", () => ({
@@ -360,6 +361,190 @@ describe("commentReleasedPrs", () => {
     expect(core.warning).toHaveBeenCalledWith(
       expect.stringContaining("Server Error"),
     );
+  });
+});
+
+describe("releases from commits (no changesets consumed)", () => {
+  // A commit that removed no changesets, and an API that knows which merged
+  // pull request each commit came from.
+  function commitsGitHub(
+    prOf: Record<string, number>,
+    failOnce = new Set<string>(),
+  ) {
+    const created: { pr: number; body: string }[] = [];
+    const lookups: string[] = [];
+    const octokit: CommentOctokit = {
+      rest: {
+        repos: {
+          getCommit: async ({ ref }) => ({
+            data: {
+              sha: ref === "s" ? "s" : `${ref}-full`,
+              parents: [{ sha: "parent" }],
+              files: [],
+            },
+          }),
+          getContent: async () => ({ data: {} }),
+          listCommits: async () => ({ data: [] }),
+          listPullRequestsAssociatedWithCommit: async ({ commit_sha }) => {
+            lookups.push(commit_sha);
+            if (failOnce.delete(commit_sha)) throw new Error("502");
+            const pr = prOf[commit_sha.replace(/-full$/, "")];
+            return {
+              data:
+                pr === undefined
+                  ? []
+                  : [{ number: pr, merged_at: "2026-09-23T00:00:00Z" }],
+            };
+          },
+        },
+        issues: {
+          listComments: async () => ({ data: [] }),
+          createComment: async ({ issue_number, body }) => {
+            created.push({ pr: issue_number, body });
+            return {};
+          },
+        },
+      },
+    };
+    return { octokit, created, lookups };
+  }
+
+  it("looks a commit up once when several packages' sections name it", async () => {
+    const { octokit, created, lookups } = commitsGitHub({ abc1234: 40 });
+    await commentReleasedPrs({
+      octokit,
+      sha: "s",
+      released: ["widgets", "gadgets"].map((name) => ({
+        name,
+        version: "1.2.0",
+        tag: `${name}@1.2.0`,
+        notes: "- abc1234: feat: a shared thing\n",
+      })),
+      serverUrl: SERVER,
+    });
+    expect(lookups).toEqual(["abc1234-full"]);
+    expect(created.map((c) => c.pr)).toEqual([40]);
+    expect(created[0].body).toContain("widgets@1.2.0");
+    expect(created[0].body).toContain("gadgets@1.2.0");
+  });
+
+  it("tries a failed lookup again for the next package", async () => {
+    const { octokit, created, lookups } = commitsGitHub(
+      { abc1234: 40 },
+      new Set(["abc1234-full"]),
+    );
+    await commentReleasedPrs({
+      octokit,
+      sha: "s",
+      released: ["widgets", "gadgets"].map((name) => ({
+        name,
+        version: "1.2.0",
+        tag: `${name}@1.2.0`,
+        notes: "- abc1234: feat: a shared thing\n",
+      })),
+      serverUrl: SERVER,
+    });
+    expect(lookups).toEqual(["abc1234-full", "abc1234-full"]);
+    expect(created.map((c) => c.pr)).toEqual([40]);
+    expect(created[0].body).toContain("gadgets@1.2.0");
+  });
+
+  it("credits the pull requests a changelog-github section links", async () => {
+    const { octokit, created } = commitsGitHub({});
+    await commentReleasedPrs({
+      octokit,
+      sha: "s",
+      released: [
+        {
+          name: "widgets",
+          version: "1.2.0",
+          tag: "v1.2.0",
+          notes:
+            "### Minor Changes\n\n- [#31](https://github.com/acme/widgets/pull/31) [`abc1234`](https://github.com/acme/widgets/commit/abc1234) Thanks! - feat: a thing\n",
+        },
+      ],
+      serverUrl: SERVER,
+    });
+    expect(created.map((c) => c.pr)).toEqual([31]);
+  });
+
+  it("maps a changelog-git section's commits to their pull requests", async () => {
+    const { octokit, created } = commitsGitHub({ abc1234: 40, def5678: 41 });
+    await commentReleasedPrs({
+      octokit,
+      sha: "s",
+      released: [
+        {
+          name: "widgets",
+          version: "1.2.0",
+          tag: "v1.2.0",
+          notes: "- abc1234: feat: a thing\n- def5678: fix: another\n",
+        },
+      ],
+      serverUrl: SERVER,
+    });
+    expect(created.map((c) => c.pr).sort()).toEqual([40, 41]);
+  });
+
+  it("credits each package only for its own section's references", async () => {
+    const { octokit, created } = commitsGitHub({});
+    await commentReleasedPrs({
+      octokit,
+      sha: "s",
+      released: [
+        {
+          name: "pkg-a",
+          version: "1.1.0",
+          tag: "pkg-a@1.1.0",
+          notes: "- [#1](https://github.com/acme/widgets/pull/1) - a\n",
+        },
+        {
+          name: "pkg-b",
+          version: "2.0.1",
+          tag: "pkg-b@2.0.1",
+          notes: "- [#2](https://github.com/acme/widgets/pull/2) - b\n",
+        },
+      ],
+      serverUrl: SERVER,
+    });
+    const byPr = Object.fromEntries(created.map((c) => [c.pr, c.body]));
+    expect(byPr[1]).toContain("pkg-a@1.1.0");
+    expect(byPr[1]).not.toContain("pkg-b");
+    expect(byPr[2]).toContain("pkg-b@2.0.1");
+  });
+
+  it("comments on nothing when the changelog references nothing", async () => {
+    const { octokit, created } = commitsGitHub({});
+    expect(
+      await commentReleasedPrs({
+        octokit,
+        sha: "s",
+        released: [
+          {
+            name: "widgets",
+            version: "1.2.0",
+            tag: "v1.2.0",
+            notes: "- **cli:** a plain entry\n",
+          },
+        ],
+        serverUrl: SERVER,
+      }),
+    ).toEqual([]);
+    expect(created).toHaveLength(0);
+  });
+});
+
+describe("referencesIn", () => {
+  it("finds this repository's pull request links and both commit forms", () => {
+    const refs = referencesIn(
+      [
+        "- [#31](https://github.com/acme/widgets/pull/31) [`abc1234`](https://github.com/acme/widgets/commit/abc1234) - a",
+        "- [#9](https://github.com/someone/else/pull/9) - not ours",
+        "- def5678: fix: another",
+      ].join("\n"),
+    );
+    expect(refs.pullRequests).toEqual([31]);
+    expect(refs.commits.sort()).toEqual(["abc1234", "def5678"]);
   });
 });
 
