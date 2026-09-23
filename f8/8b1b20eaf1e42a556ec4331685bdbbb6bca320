@@ -1,0 +1,25 @@
+pnpm-workspace.yaml
+  s_df06cc81ca93a0::t_58024d9e33f407 24-32
+package.json
+  s_df06cc81ca93a0::t_58024d9e33f407 44
+src/test-setup-shiprig.ts
+  s_df06cc81ca93a0::t_0daac42f52fdee 1-8,10-19,21-22,25-30
+pnpm-lock.yaml
+  ai_agent 77-79,512-545,1879-1904
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "f88b1b20eaf1e42a556ec4331685bdbbb6bca320",
+  "prompts": {},
+  "sessions": {
+    "s_df06cc81ca93a0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea084e0d-e516-4120-9276-01a2c9e861f3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "John Campion Jr <john@brightshore.io>"
+    }
+  }
+}
