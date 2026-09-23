@@ -1,6 +1,6 @@
 # shiprig-action roadmap
 
-Where shiprig-action goes next (v0.4.0 is current), measured against the two tools it sits
+Where shiprig-action goes next, measured against the two tools it sits
 between: the official `changesets/action` (its upstream) and Google's
 `release-please`. Features that change release decisions belong in shiprig (see
 [DESIGN.md](DESIGN.md#principles)); the action stays thin.
