@@ -1,4 +1,5 @@
 import * as core from "@actions/core";
+import { loadConfig, resolveSetting } from "../config.ts";
 import { GitHub } from "../github.ts";
 import { runPublish } from "../run.ts";
 import { getOptionalInput, getRequiredInput } from "../utils.ts";
@@ -26,8 +27,12 @@ async function main() {
         "the built-in `shiprig publish` or a custom 'script'.",
     );
   }
-  const createGithubReleases = core.getBooleanInput("create-github-releases");
-  const pushGitTags = core.getBooleanInput("push-git-tags");
+  // Each setting: the workflow's input, else shiprig-action.jsonc, else the
+  // default here.
+  const config = await loadConfig(cwd);
+  const createGithubReleases =
+    resolveSetting(config, "createGithubReleases") ?? true;
+  const pushGitTags = resolveSetting(config, "pushGitTags") ?? true;
 
   if (createGithubReleases && !pushGitTags) {
     throw new Error(

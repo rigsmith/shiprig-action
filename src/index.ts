@@ -1,5 +1,6 @@
 import * as core from "@actions/core";
 import { context } from "@actions/github";
+import { loadConfig, resolveSetting } from "./config.ts";
 import { GitHub } from "./github.ts";
 import { publishDecision, runPublish, runVersion } from "./run.ts";
 import { hasChangesetFiles, readReleasePlan } from "./shiprig.ts";
@@ -39,8 +40,12 @@ async function main() {
     );
   }
 
-  const pushWithGitCli = core.getBooleanInput("push-with-git-cli");
-  const prDraft = getOptionalInput("pr-draft");
+  // Each setting: the workflow's input, else shiprig-action.jsonc, else the
+  // default here.
+  const config = await loadConfig(cwd);
+  const pushWithGitCli = resolveSetting(config, "pushWithGitCli") ?? false;
+  const prDraft = resolveSetting(config, "prDraft");
+  const prBaseBranch = resolveSetting(config, "prBaseBranch");
   if (prDraft !== undefined && prDraft !== "always" && prDraft !== "create") {
     core.setFailed(`Invalid pr-draft: ${prDraft}`);
     return;
@@ -80,21 +85,18 @@ async function main() {
     case !hasChangesets && hasPublishScript: {
       const decision = await publishDecision({
         github,
-        publishOn: core.getInput("publish-on") || "version-pr-merge",
+        publishOn: resolveSetting(config, "publishOn") ?? "version-pr-merge",
         eventName: context.eventName,
-        base:
-          getOptionalInput("pr-base-branch") ??
-          context.ref.replace("refs/heads/", ""),
+        base: prBaseBranch ?? context.ref.replace("refs/heads/", ""),
       });
       core.info(decision.reason);
       if (!decision.publish) {
         return;
       }
 
-      const createGithubReleases = core.getBooleanInput(
-        "create-github-releases",
-      );
-      const pushGitTags = core.getBooleanInput("push-git-tags");
+      const createGithubReleases =
+        resolveSetting(config, "createGithubReleases") ?? true;
+      const pushGitTags = resolveSetting(config, "pushGitTags") ?? true;
       if (createGithubReleases && !pushGitTags) {
         throw new Error(
           "The input 'create-github-releases' is set to true, but 'push-git-tags' is set to false. " +
@@ -141,11 +143,11 @@ async function main() {
         script: getOptionalInput("version-script"),
         github,
         cwd,
-        prTitle: getOptionalInput("pr-title"),
-        commitMessage: getOptionalInput("commit-message"),
+        prTitle: resolveSetting(config, "prTitle"),
+        commitMessage: resolveSetting(config, "commitMessage"),
         hasPublishScript,
         prDraft,
-        branch: getOptionalInput("pr-base-branch"),
+        branch: prBaseBranch,
       });
 
       if (pullRequestNumber !== undefined) {

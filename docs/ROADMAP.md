@@ -46,36 +46,19 @@ version-pr-merge`, the default, publishes on the push that merges
   GoReleaser, rigsmith#455, #461) are live; rigsmith 1.20.2 was the first
   release cut end to end. rigsmith's old `.github/actions/release` remains as
   its reusable action for other repos.
+- **2. A config file: `shiprig-action.jsonc`** (v0.4.0). Named for the action
+  rather than `.shiprig.jsonc`, since shiprig already reads `shiprig.jsonc` as
+  its release-pipeline config, and read by the action rather than shiprig,
+  since nothing outside the action uses these settings. Found in `.github/`,
+  `.changeset/` or the working directory (more than one is an error); keys
+  stand in for the inputs of the same name; an input set in the workflow wins,
+  then the file, then the default; a schema in `schema/shiprig-action.json`.
+  Labels, Release-As (item 5) and a PR per package (item 6) can join it when
+  they exist.
 
 ## Next
 
-### 2. A config file: `.shiprig.jsonc`
-
-The release-please equivalent of `release-please-config.json`: one committed
-file for the settings that today are action inputs, plus the ones that have
-no input yet.
-
-- **Name and place.** `.shiprig.jsonc` or `.shiprig.json` (comments allowed in
-  either), found in `.changeset/`, the repo root, or `.github/`. More than one
-  is an error, not a merge, so there's never a question of which one won.
-- **The engine owns it.** shiprig reads and validates it (published schema,
-  like `changeset-config.json`), and a `shiprig config --json` prints the
-  resolved settings. The action reads that through `src/shiprig.ts`, the same
-  way it reads the release plan, so a laptop and CI resolve the same config.
-- **Precedence.** An action input that's set wins, then the file, then the
-  default. For that to work, the defaults move out of `action.yml` into code:
-  today `commit-message` and `pr-title` always arrive "set" because
-  `action.yml` fills them in.
-- **Settings.** Top level, with a per-package section where it makes sense:
-  - the version PR: title, commit message, branch, labels, draft;
-  - `createGithubReleases` (rigsmith sets it to `false`, see stage 2);
-  - when to publish (`publish-on`, an input since v0.3.0);
-  - Release-As overrides (item 5);
-  - a PR per package or group (item 6).
-- **Separate from the release pipeline.** `.changeset/release.jsonc`
-  configures the local `shiprig release` steps (version → commit → tag →
-  push); `.shiprig.jsonc` configures the action. Neither reads the other's
-  settings.
+Nothing in progress; the next pick comes from Later.
 
 ## Later
 

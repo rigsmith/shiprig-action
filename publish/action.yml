@@ -17,15 +17,14 @@ inputs:
     description: "Not supported yet: shiprig can't publish from a pack directory, so setting this fails the step before anything is downloaded. Publish with the built-in `shiprig publish` or a custom `script` instead."
     required: false
   create-github-releases:
-    description: "Whether to create Github releases after publish"
+    description: "Whether to create Github releases after publish. Defaults to `true`. Can also be set as `createGithubReleases` in `shiprig-action.jsonc`; this input wins over the file."
     required: false
-    default: true
   push-git-tags:
     description: >
       Whether to create git tags after publish. If `create-github-releases` is set to `true`,
       this option will also always be `true`.
+      Defaults to `true`. Can also be set as `pushGitTags` in `shiprig-action.jsonc`; this input wins over the file.
     required: false
-    default: true
   cwd:
     description: "The working directory to run shiprig (or the custom script) in. Defaults to the root of the repository."
     required: false
