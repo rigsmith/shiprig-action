@@ -1,67 +1,185 @@
-# shiprig release (shiprig-action)
+# shiprig release
 
-> **A fork of [changesets/action](https://github.com/changesets/action) that drives
-> [shiprig](https://rigsmith.dev) instead of the npm-only Changesets CLI.** The flow
-> is the same: a standing version PR while releases are pending, then publish,
-> tags and GitHub releases when it merges. It works across every ecosystem shiprig
-> supports (npm, .NET, Go, Rust, …), with changesets and/or conventional commits.
->
-> - Needs **shiprig ≥ 1.20.0** on `PATH` (or at `$SHIPRIG_BIN`) in the job.
-> - The root action and the `version` sub-action run on shiprig. `select-mode`, `pack`,
->   and publishing from a pack directory are not ported yet.
-> - Not released yet. See [docs/DESIGN.md](docs/DESIGN.md) for the plan.
->
-> The rest of this README is upstream's and is being rewritten for shiprig.
+A GitHub Action that automates releases with [shiprig](https://rigsmith.dev), in
+any ecosystem shiprig supports (npm, .NET, Go, Rust and more), from
+[changesets](https://changesets.dev) and/or conventional commits.
 
-# Changesets GitHub Action
+It's a fork of [changesets/action](https://github.com/changesets/action) with the
+same flow:
 
-> [!IMPORTANT]
-> This is the development branch for `changesets/action` v2 compatible with Changesets v3. For the v1 code compatible with Changesets v2, check out the [`maintenance/v1`](https://github.com/changesets/action/tree/maintenance/v1) branch.
+1. While releases are pending, it keeps a **version PR** open (branch
+   `changeset-release/<base>`) that bumps versions and writes changelogs, and
+   updates it as more changes land.
+2. When that PR merges, it **publishes**, pushes the **git tags**, and creates a
+   **GitHub release** for each package, using the package's changelog entry as
+   the release notes.
 
-This repo contains a collection of GitHub Actions for [Changesets](https://changesets.dev). Check out the [Automating Changesets](https://changesets.dev/guide/automating) guide to learn how to use these actions to automate your workflow.
+What differs is behind it: the Changesets CLI only knows npm, while shiprig
+versions, publishes and tags every ecosystem it discovers, and can take the
+release from conventional commits instead of, or as well as, changeset files.
 
-- [changesets/action](./README.md): (This README. See below for details.)
-- [changesets/action/select-mode](./select-mode/README.md): Select the mode to run a Changesets workflow.
-- [changesets/action/version](./version/README.md): Version packages and create or update a pull request with the changes.
-- [changesets/action/pack](./pack/README.md): Pack publishable packages into tarballs.
-- [changesets/action/publish](./publish/README.md): Publish packages to npm.
-- [changesets/action/pr-status](./pr-status/README.md): Generate changeset status in PRs.
-- [changesets/action/pr-comment](./pr-comment/README.md): Create or update comments on PRs.
+## Requirements
 
-## changesets/action
-
-This action handles versioning and publishing of packages. It's the equivalent of setting up the `changesets/action/select-mode`, `changesets/action/version`, and `changesets/action/publish` actions in a workflow, but with the required permissions combined.
-
-If using [trusted publishing](https://docs.npmjs.com/trusted-publishers), it's recommended to set up the individual sub-actions instead to tighten publish permissions.
-
-### Requirements
-
-- Needs repo checked out and `@changesets/cli` installed
+- **shiprig ≥ 1.20.0** on `PATH` in the job (or at `$SHIPRIG_BIN`). The action
+  doesn't install it; see [Installing shiprig](#installing-shiprig).
+- The repository checked out with enough history for shiprig to find its last
+  release tags (`fetch-depth: 0` is simplest).
 - [Job permissions][job-permissions]:
-  - `contents: write`: to commit version changes
-  - `pull-requests: write`: to create pull request
-  - `id-token: write`: if using [trusted publishing](https://docs.npmjs.com/trusted-publishers)
-- [Workflow triggers][workflow-triggers]: _any_
+  - `contents: write`: to commit version changes and push tags
+  - `pull-requests: write`: to open and update the version PR
+  - `id-token: write`: if your publish uses trusted publishing (OIDC)
+- In your repository settings, under `Actions > General`, enable **Allow GitHub
+  Actions to create and approve pull requests**.
 
-> [!NOTE]
-> In your repository settings, in `Actions > General`, also ensure the `Allow GitHub Actions to create and approve pull requests` option is enabled
+## Usage
 
-### Usage
+### A version PR, publishing when it merges
 
-> [!TIP]
-> Check out [the docs](https://changesets.dev/guide/automating#how-do-i-run-the-version-and-publish-commands) to learn how to set up the version and publish workflow.
+```yaml
+name: Release
 
-> [!IMPORTANT]
-> To use a custom GitHub token, pass it explicitly through the `github-token` input:
->
-> ```yaml
-> with:
->   github-token: ${{ secrets.CUSTOM_GITHUB_TOKEN }}
-> ```
->
-> Setting the `GITHUB_TOKEN` environment variable does not configure the action. This applies whether release changes are pushed using the GitHub API or the Git CLI.
+on:
+  push:
+    branches: [main]
 
-### API
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Install shiprig
+        run: npm install -g @rigsmith/shiprig@1.20.0
+
+      - uses: rigsmith/shiprig-action@v0
+        with:
+          publish-script: shiprig publish --yes
+        env:
+          # Whatever your registries need, e.g.:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+```
+
+For npm, shiprig publishes with `NPM_TOKEN`, or with trusted publishing (OIDC)
+when the job has `id-token: write`. Trusted publishing signs provenance, which
+npm only accepts from **GitHub-hosted** runners: on a self-hosted runner (which
+includes services like Blacksmith) the publish fails with `E422`.
+
+Leave out `publish-script` to only manage the version PR, and publish some
+other way.
+
+The action sets `CHANGESETS_OUTPUT` to a file before running `publish-script`.
+`shiprig publish` writes an event there for each git tag it creates, and the
+action reads them back to push exactly those tags and create their GitHub
+releases. A custom script needs to run `shiprig publish` (or `shiprig tag`)
+somewhere, or the action won't know what was released.
+
+### Conventional commits
+
+shiprig reads the versioning source from its changeset config. To release from
+conventional commits (`feat:`, `fix:`, `feat!:`) instead of changeset files, set:
+
+```jsonc
+// .changeset/config.json
+{
+  "versioning": { "source": "commits" },
+}
+```
+
+`both` takes changeset files and commits together. Nothing changes in the
+workflow: the action asks shiprig what's pending either way.
+
+### Prereleases
+
+`shiprig pre enter next` puts the repo in prerelease mode; the version PR then
+releases `-next.N` versions, and its title says so. After `shiprig pre exit`,
+the next version PR graduates everything to a stable release.
+
+### Using a custom GitHub token
+
+Pass it through the `github-token` input:
+
+```yaml
+with:
+  github-token: ${{ secrets.CUSTOM_GITHUB_TOKEN }}
+```
+
+Setting a `GITHUB_TOKEN` environment variable does not configure the action.
+With a token from a GitHub App or a personal account, the version PR runs your
+other workflows' `pull_request` checks, which PRs opened with the default token
+don't.
+
+## Installing shiprig
+
+Any of these puts shiprig on `PATH`. Pin the version, so a release job always
+runs the shiprig it was tested with.
+
+- **npm** (any runner with Node; published with provenance):
+
+  ```yaml
+  - run: npm install -g @rigsmith/shiprig@1.20.0
+  ```
+
+- **The install script** (Linux and macOS runners):
+
+  ```yaml
+  - run: |
+      curl -fsSL https://rigsmith.sh | RIGSMITH_VERSION=v1.20.0 sh -s shiprig
+      echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+  ```
+
+See [rigsmith.dev](https://rigsmith.dev/guide/installation) for Homebrew,
+winget and the rest.
+
+## Outputs
+
+- `has-changesets`: whether changeset files exist (counting the ones waiting in
+  `.changeset/pre/` after `pre exit`). A release that comes only from
+  conventional commits doesn't set it.
+- `published`, `published-packages`: what `publish-script` published, as
+  reported through the tag events.
+- `pr-number`: the version PR opened or updated.
+
+## Sub-actions
+
+The root action above combines the steps; the sub-actions split them across jobs.
+
+| Sub-action                                                                                                 | Status                                                                |
+| ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| [`version`](./version/README.md)                                                                           | Runs on shiprig                                                       |
+| [`publish`](./publish/README.md)                                                                           | Runs on shiprig; publishing from a pack directory isn't supported yet |
+| [`pr-comment`](./pr-comment/README.md)                                                                     | Works as is (doesn't use a release tool)                              |
+| [`select-mode`](./select-mode/README.md), [`pack`](./pack/README.md), [`pr-status`](./pr-status/README.md) | **Not ported yet:** these still run the Changesets CLI                |
+
+The split flow (select-mode → pack → publish) is phase 4 in
+[docs/DESIGN.md](docs/DESIGN.md).
+
+## Migrating from changesets/action
+
+1. Install shiprig in the job (see above). shiprig reads the same
+   `.changeset/` directory, changeset files and `config.json`, so nothing there
+   needs to change.
+2. Replace `uses: changesets/action@v2` with `uses: rigsmith/shiprig-action@v0`.
+3. If you set `version-script` or `publish-script` to `changeset …` commands,
+   switch them to `shiprig version --yes` and `shiprig publish --yes`, or drop
+   `version-script` (that's the default).
+
+The version branch name stays `changeset-release/<base>`, so changeset-bot and
+anything else that looks for it keep working.
+
+## API
 
 <!-- api-start -->
 
@@ -79,14 +197,13 @@ If using [trusted publishing](https://docs.npmjs.com/trusted-publishers), it's r
 | `push-with-git-cli`      | Whether to use the Git CLI instead of the GitHub API to push release commits and tags. Defaults to `false`. When using the GitHub API, commits and tags are signed using GitHub's GPG key and attributed to the user or app that owns the `github-token`.                             |
 | `cwd`                    | The working directory to run shiprig in. Defaults to the root of the repository.                                                                                                                                                                                                      |
 
-| Outputs              | Description                                                                                                                                      |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `published`          | A "true" or "false" string value to indicate whether a publishing is happened or not                                                             |
-| `published-packages` | A JSON array to present the published packages. The format is `[{"name": "@xx/xx", "version": "1.2.0"}, {"name": "@xx/xy", "version": "0.8.9"}]` |
-| `has-changesets`     | A "true" or "false" string value about whether there were changesets. Useful if you want to create your own publishing functionality.            |
-| `pr-number`          | The pull request number that was created or updated                                                                                              |
+| Outputs              | Description                                                                                                                                                                                   |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `published`          | A "true" or "false" string value to indicate whether anything was published                                                                                                                   |
+| `published-packages` | A JSON array to present the published packages. The format is `[{"name": "@xx/xx", "version": "1.2.0"}, {"name": "@xx/xy", "version": "0.8.9"}]`                                              |
+| `has-changesets`     | A "true" or "false" string value about whether changeset files exist (including those waiting in .changeset/pre/ after `pre exit`). A release from conventional commits alone doesn't set it. |
+| `pr-number`          | The pull request number that was created or updated                                                                                                                                           |
 
 <!-- api-end -->
 
 [job-permissions]: https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idpermissions
-[workflow-triggers]: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows

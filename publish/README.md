@@ -1,18 +1,20 @@
-# changesets/action/publish
+# rigsmith/shiprig-action/publish
 
-This action publishes packages to npm.
+This action publishes packages with shiprig (by default `shiprig publish --yes`), then pushes the git tags it reports and creates their GitHub releases.
+
+Publishing from a pack directory (`pack-dir-artifact-id`) isn't supported yet: shiprig has no `publish --from-pack-dir`, so the input is rejected before anything is downloaded.
 
 ## Requirements
 
-- Needs repo checked out and `@changesets/cli` installed
+- Needs repo checked out and **shiprig ≥ 1.20.0** on `PATH` (or at `$SHIPRIG_BIN`)
 - [Job permissions][job-permissions]:
-  - `id-token: write`: if using [trusted publishing](https://docs.npmjs.com/trusted-publishers)
+  - `id-token: write`: if using [trusted publishing](https://docs.npmjs.com/trusted-publishers), which npm only accepts from GitHub-hosted runners
 - [Workflow triggers][workflow-triggers]: _any_
 
 ## Usage
 
 > [!TIP]
-> Check out [the docs](https://changesets.dev/guide/automating#how-do-i-run-the-version-and-publish-commands) to learn how to set up the version and publish workflow.
+> See [the root README](../README.md) for a complete workflow and for installing shiprig.
 
 ## API
 

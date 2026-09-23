@@ -1,10 +1,10 @@
-# changesets/action/version
+# rigsmith/shiprig-action/version
 
-This action versions packages and creates or updates a pull request with the changes.
+This action versions packages with shiprig and creates or updates a pull request with the changes.
 
 ## Requirements
 
-- Needs repo checked out and `@changesets/cli` installed
+- Needs repo checked out and **shiprig ≥ 1.20.0** on `PATH` (or at `$SHIPRIG_BIN`)
 - [Job permissions][job-permissions]:
   - `contents: write`: to commit version changes
   - `pull-requests: write`: to create pull request
@@ -16,7 +16,7 @@ This action versions packages and creates or updates a pull request with the cha
 ## Usage
 
 > [!TIP]
-> Check out [the docs](https://changesets.dev/guide/automating#how-do-i-run-the-version-and-publish-commands) to learn how to set up the version and publish workflow.
+> See [the root README](../README.md) for a complete workflow and for installing shiprig.
 
 ## API
 
