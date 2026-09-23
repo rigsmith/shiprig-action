@@ -172,12 +172,19 @@ export type PlannedRelease = { name: string; type: string; newVersion: string };
  * a non-zero exit is a real failure, or the gate (a package changed with no
  * changeset), and is thrown.
  */
-export async function readReleasePlan(cwd: string): Promise<PlannedRelease[]> {
+export async function readReleasePlan(
+  cwd: string,
+  { since }: { since?: string } = {},
+): Promise<PlannedRelease[]> {
   const planPath = path.join(
     process.env.RUNNER_TEMP ?? (await fs.realpath(os.tmpdir())),
     `shiprig-plan-${randomUUID()}.json`,
   );
-  const status = await getExecOutputShiprig(["status", "--output", planPath], {
+  // --since: only the changesets added after that ref, as `changeset status
+  // --since` (a PR's own, for pr-status).
+  const args = ["status", "--output", planPath];
+  if (since) args.push("--since", since);
+  const status = await getExecOutputShiprig(args, {
     cwd,
     ignoreReturnCode: true,
     silent: true,

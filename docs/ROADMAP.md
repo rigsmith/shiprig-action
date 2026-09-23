@@ -59,7 +59,7 @@ version-pr-merge`, the default, publishes on the push that merges
   whose changeset shipped is told which package versions it went out in, as
   release-please and semantic-release do. Found through the changesets the
   version PR's merge consumed, so a monorepo PR is credited per package.
-  Commit-sourced releases (`versioning.source: commits`) don't get them yet.
+  Commit-sourced releases (`versioning.source: commits`) got them in v0.6.0.
 - **Hold label, job summary, released-in for commit releases** (v0.6.0). A
   `release:hold` label on the version PR freezes its branch for hand edits;
   every run writes what it did to the job summary; a release from
@@ -67,6 +67,11 @@ version-pr-merge`, the default, publishes on the push that merges
   reference. Per-package skip (one package waits while another ships) needs
   shiprig to version only some packages, like canon's `changeset version
 --ignore`, first.
+- **`pr-status` on shiprig, with a changelog preview** (unreleased). The PR
+  status comment plans with `shiprig status --since <base>`, so it shows each
+  package's new version in any ecosystem, and a collapsible preview of the
+  changelog entries the PR's own changesets add (`shiprig version
+--changelog`). It no longer needs `@changesets/cli`.
 
 ## Next
 
@@ -87,7 +92,7 @@ Let an app and a library release on different schedules (release-please's
 
 ### 7. The split sub-actions (DESIGN phase 4)
 
-`select-mode`, `pack` and `pr-status` still run the Changesets CLI.
+`select-mode` and `pack` still run the Changesets CLI; `pr-status` is done.
 
 ### 8. Upstream issues
 

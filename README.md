@@ -261,12 +261,13 @@ winget and the rest.
 
 The root action above combines the steps; the sub-actions split them across jobs.
 
-| Sub-action                                                                                                 | Status                                                                |
-| ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| [`version`](./version/README.md)                                                                           | Runs on shiprig                                                       |
-| [`publish`](./publish/README.md)                                                                           | Runs on shiprig; publishing from a pack directory isn't supported yet |
-| [`pr-comment`](./pr-comment/README.md)                                                                     | Works as is (doesn't use a release tool)                              |
-| [`select-mode`](./select-mode/README.md), [`pack`](./pack/README.md), [`pr-status`](./pr-status/README.md) | **Not ported yet:** these still run the Changesets CLI                |
+| Sub-action                                                           | Status                                                                |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| [`version`](./version/README.md)                                     | Runs on shiprig                                                       |
+| [`publish`](./publish/README.md)                                     | Runs on shiprig; publishing from a pack directory isn't supported yet |
+| [`pr-comment`](./pr-comment/README.md)                               | Works as is (doesn't use a release tool)                              |
+| [`pr-status`](./pr-status/README.md)                                 | Runs on shiprig; adds a changelog preview                             |
+| [`select-mode`](./select-mode/README.md), [`pack`](./pack/README.md) | **Not ported yet:** these still run the Changesets CLI                |
 
 The split flow (select-mode → pack → publish) is phase 4 in
 [docs/DESIGN.md](docs/DESIGN.md).

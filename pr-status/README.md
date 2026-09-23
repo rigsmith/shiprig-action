@@ -1,18 +1,17 @@
 # rigsmith/shiprig-action/pr-status
 
-> [!WARNING]
-> **Not ported to shiprig yet.** This sub-action still runs the Changesets CLI,
-> so it needs `@changesets/cli` installed and only understands npm packages.
-> Porting it is phase 4 in [docs/DESIGN.md](../docs/DESIGN.md). The
-> [root action](../README.md) covers the same flow on shiprig in one job.
+This action generates the changesets status in PRs: whether the PR has changeset files, which packages they release and at what version, and a **changelog preview** of the entries the PR's own changesets add.
 
-This action generates the changesets status in PRs, for example, whether it has changeset files and which packages will be released if the PR is merged.
+It runs on shiprig, so it covers every ecosystem shiprig supports, not only npm. The plan comes from `shiprig status --since <base>` and the preview from `shiprig version --changelog`, both limited to the changesets the PR adds or edits. Changesets already pending on the base branch stay out of both.
+
+A repository that also versions from conventional commits (`versioning.source` of `commits` or `both`) gets a note instead of a preview: shiprig can't yet limit commit-sourced entries to the PR, so the plan there includes releases from commits already on the base branch.
 
 It requires the repo to be checked out, and will automatically fetch the PR head ref into a temporary detached worktree in order to infer the changed files and packages.
 
 ## Requirements
 
 - Needs repo checked out
+- **shiprig ≥ 1.20.0** on `PATH` (or at `$SHIPRIG_BIN`), as for the [root action](../README.md#installing-shiprig)
 - [Job permissions][job-permissions]: _none_
 - [Workflow triggers][workflow-triggers]:
   - [`pull_request`][trigger-pull-request]
