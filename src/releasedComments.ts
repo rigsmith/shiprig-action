@@ -44,6 +44,7 @@ export type CommentOctokit = {
         repo: string;
         issue_number: number;
         per_page: number;
+        page: number;
       }): Promise<{ data: { body?: string | null }[] }>;
       createComment(p: {
         owner: string;
@@ -110,12 +111,7 @@ export async function commentReleasedPrs({
     const commented: number[] = [];
     for (const [pr, packages] of [...credited].sort((a, b) => a[0] - b[0])) {
       try {
-        const { data: comments } = await octokit.rest.issues.listComments({
-          ...repo,
-          issue_number: pr,
-          per_page: 100,
-        });
-        if (comments.some((c) => c.body?.includes(marker))) continue;
+        if (await hasComment(octokit, pr, marker)) continue;
         await octokit.rest.issues.createComment({
           ...repo,
           issue_number: pr,
@@ -165,15 +161,34 @@ export function commentBody(
 }
 
 /**
- * Whether a changeset's frontmatter names the package. Canon's
- * `"pkg": minor` and shiprig's `"pkg"` lines both quote the name; a bare
- * `pkg: minor` is YAML too.
+ * Whether a changeset's frontmatter names the package, as a key: canon's
+ * `"pkg": minor`, shiprig's `"pkg"` line, or a bare `pkg: minor`. Only a name
+ * at the start of a line counts, so shiprig's `scope: pkg` names nothing.
  */
 export function namesPackage(changeset: string, name: string): boolean {
   const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(changeset);
   if (!match) return false;
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(^|[\\s"'])${escaped}(["':]|\\s|$)`, "m").test(match[1]);
+  return new RegExp(`^\\s*(["']?)${escaped}\\1\\s*(:|$)`, "m").test(match[1]);
+}
+
+// Whether any comment on the pull request carries the marker, on any page: a
+// busy pull request can have more than one page of comments before this one.
+async function hasComment(
+  octokit: CommentOctokit,
+  pr: number,
+  marker: string,
+): Promise<boolean> {
+  for (let page = 1; ; page++) {
+    const { data } = await octokit.rest.issues.listComments({
+      ...context.repo,
+      issue_number: pr,
+      per_page: 100,
+      page,
+    });
+    if (data.some((c) => c.body?.includes(marker))) return true;
+    if (data.length < 100) return false;
+  }
 }
 
 async function readAt(

@@ -68,10 +68,10 @@ function fakeGitHub(opts: {
         },
       },
       issues: {
-        listComments: async ({ issue_number }) => ({
-          data: (opts.existingComments?.[issue_number] ?? []).map((body) => ({
-            body,
-          })),
+        listComments: async ({ issue_number, per_page, page }) => ({
+          data: (opts.existingComments?.[issue_number] ?? [])
+            .slice((page - 1) * per_page, page * per_page)
+            .map((body) => ({ body })),
         }),
         createComment: async ({ issue_number, body }) => {
           if (issue_number === opts.failComment) {
@@ -186,6 +186,29 @@ describe("commentReleasedPrs", () => {
     expect(created).toHaveLength(0);
   });
 
+  it("finds its earlier comment past the first page of comments", async () => {
+    const { octokit, created } = fakeGitHub({
+      removed: [".changeset/a.md"],
+      changesets: { ".changeset/a.md": cs('"widgets": patch') },
+      addedBy: { ".changeset/a.md": 42 },
+      existingComments: {
+        42: [
+          ...Array.from({ length: 150 }, (_, i) => `review comment ${i}`),
+          "🚀 Released in: …\n<!-- shiprig-action:released s -->",
+        ],
+      },
+    });
+
+    await commentReleasedPrs({
+      octokit,
+      sha: "s",
+      released: [{ name: "widgets", version: "1.0.1", tag: "v1.0.1" }],
+      serverUrl: SERVER,
+    });
+
+    expect(created).toHaveLength(0);
+  });
+
   it("does nothing when the commit consumed no changesets (the README doesn't count)", async () => {
     const { octokit, created } = fakeGitHub({
       removed: [".changeset/README.md", "docs/old.md"],
@@ -284,6 +307,9 @@ describe("namesPackage", () => {
     ],
     ['"widgets-extra": minor', "widgets", false],
     ['"github.com/acme/tool/ui"', "github.com/acme/tool", false],
+    // a scope line isn't a package key
+    ['type: fix\nscope: widgets\n"github.com/acme/tool"', "widgets", false],
+    ['  "widgets": minor', "widgets", true],
   ])("%j names %s: %s", (frontmatter, name, want) => {
     expect(namesPackage(cs(frontmatter), name)).toBe(want);
   });
