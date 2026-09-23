@@ -1,0 +1,11 @@
+docs/RELEASING.md
+  ai_agent 15-18,20-23,34-38
+scripts/release.ts
+  ai_agent 2,9-11,30-66,71-73,80-87,95-98,119-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "e9435d5fad4a94899d73bf3d9089a30b3a587ebd",
+  "prompts": {}
+}
