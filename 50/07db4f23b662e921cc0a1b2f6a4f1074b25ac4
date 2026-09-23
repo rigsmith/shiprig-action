@@ -1,0 +1,21 @@
+.github/workflows/release.yml
+  s_505a2cfce9114c::t_10870c4d4550a2 7-11,19-21,25,35,37-45,60
+docs/RELEASING.md
+  s_505a2cfce9114c::t_10870c4d4550a2 31-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "5007db4f23b662e921cc0a1b2f6a4f1074b25ac4",
+  "prompts": {},
+  "sessions": {
+    "s_505a2cfce9114c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26f83a80-3cb9-404d-829c-6b4925947f16",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "John Campion Jr <john@brightshore.io>"
+    }
+  }
+}
