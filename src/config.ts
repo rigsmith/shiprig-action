@@ -21,6 +21,7 @@ export type ActionConfig = {
   createGithubReleases?: boolean;
   pushGitTags?: boolean;
   pushWithGitCli?: boolean;
+  commentReleasedPrs?: boolean;
 };
 
 // Each key, its type, and the input it stands in for.
@@ -33,6 +34,7 @@ export const CONFIG_KEYS = {
   createGithubReleases: { type: "boolean", input: "create-github-releases" },
   pushGitTags: { type: "boolean", input: "push-git-tags" },
   pushWithGitCli: { type: "boolean", input: "push-with-git-cli" },
+  commentReleasedPrs: { type: "boolean", input: "comment-released-prs" },
 } as const satisfies Record<
   keyof ActionConfig,
   { type: "string" | "boolean" | readonly string[]; input: string }

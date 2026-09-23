@@ -12,6 +12,7 @@ import {
 import { context } from "@actions/github";
 import type { GitHub } from "./github.ts";
 import type { Octokit } from "./octokit.ts";
+import { commentReleasedPrs as commentReleasedPrsOn } from "./releasedComments.ts";
 import {
   execShiprig,
   getExecOutputShiprig,
@@ -60,6 +61,8 @@ type PublishOptions = {
   fromPackDir?: string;
   createGithubReleases: boolean;
   pushGitTags: boolean;
+  // Comment "released in" on the pull requests whose changesets shipped.
+  commentReleasedPrs?: boolean;
   github: GitHub;
   cwd: string;
 };
@@ -153,6 +156,7 @@ export async function runPublish({
   github,
   createGithubReleases,
   pushGitTags,
+  commentReleasedPrs = false,
   cwd,
 }: PublishOptions): Promise<PublishResult> {
   const { octokit } = github;
@@ -239,6 +243,20 @@ export async function runPublish({
         }
       }),
     );
+  }
+
+  // Only once the tags are on GitHub: a comment links each release.
+  if (commentReleasedPrs && pushGitTags && releases.length) {
+    await commentReleasedPrsOn({
+      octokit,
+      sha: context.sha,
+      released: releases.map(({ pkg, tag }) => ({
+        name: pkg.name,
+        version: pkg.version,
+        tag,
+      })),
+      serverUrl: github.serverUrl,
+    });
   }
 
   if (releases.length) {

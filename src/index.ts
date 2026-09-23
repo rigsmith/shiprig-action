@@ -97,6 +97,8 @@ async function main() {
       const createGithubReleases =
         resolveSetting(config, "createGithubReleases") ?? true;
       const pushGitTags = resolveSetting(config, "pushGitTags") ?? true;
+      const commentReleasedPrs =
+        resolveSetting(config, "commentReleasedPrs") ?? true;
       if (createGithubReleases && !pushGitTags) {
         throw new Error(
           "The input 'create-github-releases' is set to true, but 'push-git-tags' is set to false. " +
@@ -109,6 +111,7 @@ async function main() {
         github,
         createGithubReleases,
         pushGitTags,
+        commentReleasedPrs,
         cwd,
       });
 
