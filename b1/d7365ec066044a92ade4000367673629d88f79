@@ -1,0 +1,13 @@
+docs/ROADMAP.md
+  ai_agent 32-40
+README.md
+  ai_agent 104-134
+.changeset/action-config-file.md
+  ai_agent 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "b1d7365ec066044a92ade4000367673629d88f79",
+  "prompts": {}
+}
