@@ -1,0 +1,9 @@
+docs/DESIGN.md
+  ai_agent 31-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "db9a3ec4c0ab7c2ced5ece914a3b82b029e1cc13",
+  "prompts": {}
+}
