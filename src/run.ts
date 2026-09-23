@@ -80,6 +80,9 @@ type PublishResult =
   | {
       published: true;
       publishedPackages: PublishedPackage[];
+      // The same packages with their tags, for the job summary; the
+      // published-packages output keeps upstream's shape.
+      released: (PublishedPackage & { tag: string })[];
       exitCode: number;
     }
   | {
@@ -251,15 +254,20 @@ export async function runPublish({
       octokit,
       sha: context.sha,
       released: await Promise.all(
-        releases.map(async ({ pkg, tag }) => ({
-          name: pkg.name,
-          version: pkg.version,
-          tag,
-          notes: getChangelogEntry(
+        releases.map(async ({ pkg, tag }) => {
+          const entry = getChangelogEntry(
             (await readChangelog(pkg)) ?? "",
             pkg.version,
-          )?.content,
-        })),
+          );
+          return {
+            name: pkg.name,
+            version: pkg.version,
+            tag,
+            // No heading for this version: the rest of the changelog is
+            // older releases, whose PRs this one didn't ship.
+            notes: entry.found ? entry.content : undefined,
+          };
+        }),
       ),
       serverUrl: github.serverUrl,
     });
@@ -271,6 +279,11 @@ export async function runPublish({
       publishedPackages: releases.map(({ pkg }) => ({
         name: pkg.name,
         version: pkg.version,
+      })),
+      released: releases.map(({ pkg, tag }) => ({
+        name: pkg.name,
+        version: pkg.version,
+        tag,
       })),
       exitCode: changesetPublishOutput.exitCode,
     };
@@ -412,20 +425,29 @@ export async function runVersion({
   }
 
   // A held version PR's branch is someone's to edit by hand: leave it be.
-  const { data: openVersionPrs } = await octokit.rest.pulls.list({
-    ...context.repo,
-    state: "open",
-    head: `${context.repo.owner}:${versionBranch}`,
-    base: branch,
-  });
-  const held = openVersionPrs.find((pr) =>
-    (pr.labels ?? []).some((l) => l.name === holdLabel),
-  );
-  if (held) {
-    core.info(
-      `The version PR #${held.number} has the "${holdLabel}" label, so this run leaves its branch alone. Remove the label to let the action update it again.`,
+  const listVersionPrs = async () =>
+    (
+      await octokit.rest.pulls.list({
+        ...context.repo,
+        state: "open",
+        head: `${context.repo.owner}:${versionBranch}`,
+        base: branch,
+      })
+    ).data;
+  const held = (prs: Awaited<ReturnType<typeof listVersionPrs>>) => {
+    const pr = prs.find((p) =>
+      (p.labels ?? []).some((l) => l.name === holdLabel),
     );
-    return { pullRequestNumber: held.number, skipped: "held" };
+    if (pr) {
+      core.info(
+        `The version PR #${pr.number} has the "${holdLabel}" label, so this run leaves its branch alone. Remove the label to let the action update it again.`,
+      );
+    }
+    return pr;
+  };
+  const heldEarly = held(await listVersionPrs());
+  if (heldEarly) {
+    return { pullRequestNumber: heldEarly.number, skipped: "held" };
   }
 
   const pre = await readPreState(cwd);
@@ -476,8 +498,13 @@ export async function runVersion({
   const finalCommitMessage =
     commitMessage !== undefined ? `${commitMessage}${preSuffix}` : defaultTitle;
 
-  // Listed once, before the hold check above.
-  const existingPullRequests = { data: openVersionPrs };
+  // Listed again: the hold label may have been added, or another run may have
+  // opened the PR, while the version script ran.
+  const existingPullRequests = { data: await listVersionPrs() };
+  const heldLate = held(existingPullRequests.data);
+  if (heldLate) {
+    return { pullRequestNumber: heldLate.number, skipped: "held" };
+  }
   core.debug(
     `Existing pull requests: ${JSON.stringify(
       existingPullRequests.data,

@@ -309,38 +309,45 @@ export function referencesIn(notes: string): {
 
 // Credits each released package's pull requests from its changelog section:
 // the ones it links, and the merged pull requests of the commits it names.
-// One reference that can't be looked up costs only itself.
+// One reference that can't be looked up costs only itself. A commit named in
+// several packages' sections is looked up once.
 async function creditFromNotes(
   octokit: CommentOctokit,
   released: ReleasedPackage[],
   credit: (pr: number, r: ReleasedPackage) => void,
 ): Promise<void> {
+  const prOfCommit = new Map<string, number | undefined>();
+  const lookUp = async (commit: string) => {
+    try {
+      const { data: full } = await octokit.rest.repos.getCommit({
+        ...context.repo,
+        ref: commit,
+        per_page: 1,
+        page: 1,
+      });
+      const sha = full.sha ?? commit;
+      const { data: pulls } =
+        await octokit.rest.repos.listPullRequestsAssociatedWithCommit({
+          ...context.repo,
+          commit_sha: sha,
+        });
+      return pulls.find((p) => p.merged_at != null)?.number;
+    } catch (err) {
+      core.warning(
+        `Couldn't find the pull request for commit ${commit}: ${(err as Error).message}`,
+      );
+      return undefined;
+    }
+  };
   for (const r of released) {
     if (!r.notes) continue;
     const { pullRequests, commits } = referencesIn(r.notes);
     for (const pr of pullRequests) credit(pr, r);
     if (pullRequests.length > 0) continue; // the links already name them
     for (const commit of commits) {
-      try {
-        const { data: full } = await octokit.rest.repos.getCommit({
-          ...context.repo,
-          ref: commit,
-          per_page: 1,
-          page: 1,
-        });
-        const sha = full.sha ?? commit;
-        const { data: pulls } =
-          await octokit.rest.repos.listPullRequestsAssociatedWithCommit({
-            ...context.repo,
-            commit_sha: sha,
-          });
-        const pr = pulls.find((p) => p.merged_at != null)?.number;
-        if (pr !== undefined) credit(pr, r);
-      } catch (err) {
-        core.warning(
-          `Couldn't find the pull request for commit ${commit}: ${(err as Error).message}`,
-        );
-      }
+      if (!prOfCommit.has(commit)) prOfCommit.set(commit, await lookUp(commit));
+      const pr = prOfCommit.get(commit);
+      if (pr !== undefined) credit(pr, r);
     }
   }
 }

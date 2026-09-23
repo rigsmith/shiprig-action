@@ -8,6 +8,7 @@ import {
   planSummary,
   publishedSummary,
   reasonSummary,
+  summaryWritten,
   writeSummary,
 } from "./summary.ts";
 import {
@@ -20,7 +21,12 @@ import {
 try {
   await main();
 } catch (err) {
-  core.setFailed((err as Error).message);
+  const message = (err as Error).message;
+  // A failure that came before the run's own summary still gets one.
+  if (!summaryWritten()) {
+    await writeSummary(reasonSummary(`The run failed: ${message}`));
+  }
+  core.setFailed(message);
 }
 
 async function main() {
@@ -125,7 +131,7 @@ async function main() {
       });
 
       await writeSummary(
-        publishedSummary(result.published ? result.publishedPackages : []),
+        publishedSummary(result.published ? result.released : []),
       );
       if (result.published) {
         core.setOutput("published", "true");

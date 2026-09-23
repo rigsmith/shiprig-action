@@ -6,8 +6,16 @@ import type { PlannedRelease } from "./shiprig.ts";
 // the run page without opening the version PR or the logs. Best effort: a
 // summary that can't be written only warns.
 
+let written = false;
+
+/** Whether this run has written its summary (or tried to). */
+export function summaryWritten(): boolean {
+  return written;
+}
+
 export async function writeSummary(markdown: string): Promise<void> {
   if (!process.env.GITHUB_STEP_SUMMARY) return;
+  written = true;
   try {
     await core.summary.addRaw(markdown, true).write();
   } catch (err) {

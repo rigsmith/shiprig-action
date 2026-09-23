@@ -369,6 +369,7 @@ describe("releases from commits (no changesets consumed)", () => {
   // pull request each commit came from.
   function commitsGitHub(prOf: Record<string, number>) {
     const created: { pr: number; body: string }[] = [];
+    const lookups: string[] = [];
     const octokit: CommentOctokit = {
       rest: {
         repos: {
@@ -382,6 +383,7 @@ describe("releases from commits (no changesets consumed)", () => {
           getContent: async () => ({ data: {} }),
           listCommits: async () => ({ data: [] }),
           listPullRequestsAssociatedWithCommit: async ({ commit_sha }) => {
+            lookups.push(commit_sha);
             const pr = prOf[commit_sha.replace(/-full$/, "")];
             return {
               data:
@@ -400,8 +402,27 @@ describe("releases from commits (no changesets consumed)", () => {
         },
       },
     };
-    return { octokit, created };
+    return { octokit, created, lookups };
   }
+
+  it("looks a commit up once when several packages' sections name it", async () => {
+    const { octokit, created, lookups } = commitsGitHub({ abc1234: 40 });
+    await commentReleasedPrs({
+      octokit,
+      sha: "s",
+      released: ["widgets", "gadgets"].map((name) => ({
+        name,
+        version: "1.2.0",
+        tag: `${name}@1.2.0`,
+        notes: "- abc1234: feat: a shared thing\n",
+      })),
+      serverUrl: SERVER,
+    });
+    expect(lookups).toEqual(["abc1234-full"]);
+    expect(created.map((c) => c.pr)).toEqual([40]);
+    expect(created[0].body).toContain("widgets@1.2.0");
+    expect(created[0].body).toContain("gadgets@1.2.0");
+  });
 
   it("credits the pull requests a changelog-github section links", async () => {
     const { octokit, created } = commitsGitHub({});

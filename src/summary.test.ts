@@ -59,6 +59,20 @@ describe("writeSummary", () => {
     await fs.rm(dir, { recursive: true, force: true });
   });
 
+  it("remembers that it wrote, so a failure doesn't write a second summary", async () => {
+    vi.resetModules();
+    const fresh = await import("./summary.ts");
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "summary-"));
+    const file = path.join(dir, "summary.md");
+    await fs.writeFile(file, "");
+    vi.stubEnv("GITHUB_STEP_SUMMARY", file);
+
+    expect(fresh.summaryWritten()).toBe(false);
+    await fresh.writeSummary("## hello\n");
+    expect(fresh.summaryWritten()).toBe(true);
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
   it("does nothing outside a GitHub run", async () => {
     vi.stubEnv("GITHUB_STEP_SUMMARY", "");
     await expect(writeSummary("x")).resolves.toBeUndefined();

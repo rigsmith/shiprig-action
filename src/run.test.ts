@@ -53,6 +53,12 @@ let mockedGithubMethods = {
   git: {
     getRef: vi.fn(),
   },
+  issues: {
+    listComments: vi.fn(() => Promise.resolve({ data: [] })),
+    createComment: vi.fn((_: { issue_number: number }) =>
+      Promise.resolve({ data: {} }),
+    ),
+  },
 };
 let mockedGraphql = vi.fn();
 
@@ -142,6 +148,11 @@ beforeEach(() => {
     .mockImplementation(() =>
       Promise.resolve({ data: { object: { sha: github.context.sha } } }),
     );
+  // Every listing of the version PR sees the same PRs unless a test says
+  // otherwise; none by default.
+  mockedGithubMethods.pulls.list
+    .mockReset()
+    .mockImplementation(() => ({ data: [] }));
   resetGithubContext();
 });
 
@@ -290,7 +301,7 @@ describe("version", () => {
     const cwd = fixture.path;
     await updateGithubContext(cwd);
 
-    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({ data: [] }));
+    mockedGithubMethods.pulls.list.mockImplementation(() => ({ data: [] }));
 
     mockedGithubMethods.pulls.create.mockImplementationOnce(() => ({
       data: { number: 123 },
@@ -331,7 +342,7 @@ describe("version", () => {
       path.join(cwd, ".changeset", "pre.json"),
       JSON.stringify({ mode: "pre", tag: "beta" }),
     );
-    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({ data: [] }));
+    mockedGithubMethods.pulls.list.mockImplementation(() => ({ data: [] }));
     mockedGithubMethods.pulls.create.mockImplementationOnce(() => ({
       data: { number: 123 },
     }));
@@ -370,7 +381,7 @@ describe("version", () => {
       path.join(cwd, ".changeset", "pre.json"),
       JSON.stringify({ mode: "pre", tag: "beta" }),
     );
-    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({ data: [] }));
+    mockedGithubMethods.pulls.list.mockImplementation(() => ({ data: [] }));
     mockedGithubMethods.pulls.create.mockImplementationOnce(() => ({
       data: { number: 123 },
     }));
@@ -443,7 +454,7 @@ describe("version", () => {
     await using fixture = await createSimpleProjectFixture();
     const cwd = fixture.path;
     await updateGithubContext(cwd);
-    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({ data: [] }));
+    mockedGithubMethods.pulls.list.mockImplementation(() => ({ data: [] }));
     mockedGithubMethods.git.getRef
       .mockImplementationOnce(() =>
         Promise.resolve({ data: { object: { sha: github.context.sha } } }),
@@ -475,7 +486,7 @@ describe("version", () => {
     await using fixture = await createSimpleProjectFixture();
     const cwd = fixture.path;
     await updateGithubContext(cwd);
-    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({ data: [] }));
+    mockedGithubMethods.pulls.list.mockImplementation(() => ({ data: [] }));
     mockedGithubMethods.pulls.create.mockImplementationOnce(() => ({
       data: { number: 123 },
     }));
@@ -509,7 +520,7 @@ describe("version", () => {
     await using fixture = await createSimpleProjectFixture();
     const cwd = fixture.path;
     await updateGithubContext(cwd);
-    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({
+    mockedGithubMethods.pulls.list.mockImplementation(() => ({
       data: [{ number: 5, labels: [{ name: "release:hold" }] }],
     }));
     await writeChangesets(
@@ -532,11 +543,66 @@ describe("version", () => {
     expect(mockedGraphql).not.toHaveBeenCalled();
   });
 
+  it("leaves the version PR alone when it's held while the script runs", async () => {
+    await using fixture = await createSimpleProjectFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    mockedGithubMethods.pulls.list
+      .mockImplementationOnce(() => ({ data: [{ number: 5, labels: [] }] }))
+      .mockImplementationOnce(() => ({
+        data: [{ number: 5, labels: [{ name: "release:hold" }] }],
+      }));
+    await writeChangesets(
+      [
+        {
+          releases: [
+            { name: "changesets-dev-simple-project-pkg-a", type: "minor" },
+          ],
+          summary: "Awesome feature",
+        },
+      ],
+      cwd,
+    );
+
+    const result = await runVersion({ github: createGithub(cwd), cwd });
+
+    expect(result).toEqual({ pullRequestNumber: 5, skipped: "held" });
+    expect(mockedGithubMethods.pulls.list).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(commitChangesSinceBase)).not.toHaveBeenCalled();
+    expect(mockedGraphql).not.toHaveBeenCalled();
+  });
+
+  it("updates a version PR another run opened while the script ran", async () => {
+    await using fixture = await createSimpleProjectFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    mockedGithubMethods.pulls.list
+      .mockImplementationOnce(() => ({ data: [] }))
+      .mockImplementationOnce(() => ({ data: [{ number: 7, labels: [] }] }));
+    mockedGraphql.mockImplementation(() => ({}));
+    await writeChangesets(
+      [
+        {
+          releases: [
+            { name: "changesets-dev-simple-project-pkg-a", type: "minor" },
+          ],
+          summary: "Awesome feature",
+        },
+      ],
+      cwd,
+    );
+
+    const result = await runVersion({ github: createGithub(cwd), cwd });
+
+    expect(result.pullRequestNumber).toBe(7);
+    expect(mockedGithubMethods.pulls.create).not.toHaveBeenCalled();
+  });
+
   it("uses a hold label the user named, and ignores other labels", async () => {
     await using fixture = await createSimpleProjectFixture();
     const cwd = fixture.path;
     await updateGithubContext(cwd);
-    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({
+    mockedGithubMethods.pulls.list.mockImplementation(() => ({
       data: [{ number: 5, labels: [{ name: "release:hold" }] }],
     }));
     mockedGraphql.mockImplementation(() => ({}));
@@ -568,7 +634,7 @@ describe("version", () => {
     const cwd = fixture.path;
     await updateGithubContext(cwd);
 
-    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({ data: [] }));
+    mockedGithubMethods.pulls.list.mockImplementation(() => ({ data: [] }));
 
     mockedGithubMethods.pulls.create.mockImplementationOnce(() => ({
       data: { number: 123 },
@@ -603,7 +669,7 @@ describe("version", () => {
     const cwd = fixture.path;
     await updateGithubContext(cwd);
 
-    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({ data: [] }));
+    mockedGithubMethods.pulls.list.mockImplementation(() => ({ data: [] }));
 
     mockedGithubMethods.pulls.create.mockImplementationOnce(() => ({
       data: { number: 123 },
@@ -637,7 +703,7 @@ describe("version", () => {
     const cwd = fixture.path;
     await updateGithubContext(cwd);
 
-    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({ data: [] }));
+    mockedGithubMethods.pulls.list.mockImplementation(() => ({ data: [] }));
 
     mockedGithubMethods.pulls.create.mockImplementationOnce(() => ({
       data: { number: 123 },
@@ -671,7 +737,7 @@ describe("version", () => {
     const cwd = fixture.path;
     await updateGithubContext(cwd);
 
-    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({ data: [] }));
+    mockedGithubMethods.pulls.list.mockImplementation(() => ({ data: [] }));
 
     mockedGithubMethods.pulls.create.mockImplementationOnce(() => ({
       data: { number: 123 },
@@ -729,7 +795,7 @@ fluminis divesque vulnere aquis parce lapsis rabie si visa fulmineis.
     const cwd = fixture.path;
     await updateGithubContext(cwd);
 
-    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({ data: [] }));
+    mockedGithubMethods.pulls.list.mockImplementation(() => ({ data: [] }));
 
     mockedGithubMethods.pulls.create.mockImplementationOnce(() => ({
       data: { number: 123 },
@@ -787,7 +853,7 @@ fluminis divesque vulnere aquis parce lapsis rabie si visa fulmineis.
     const cwd = fixture.path;
     await updateGithubContext(cwd);
 
-    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({
+    mockedGithubMethods.pulls.list.mockImplementation(() => ({
       data: [{ number: 123, node_id: "PR_kwDOA" }],
     }));
 
@@ -820,7 +886,7 @@ fluminis divesque vulnere aquis parce lapsis rabie si visa fulmineis.
     const cwd = fixture.path;
     await updateGithubContext(cwd);
 
-    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({
+    mockedGithubMethods.pulls.list.mockImplementation(() => ({
       data: [{ number: 123, node_id: "PR_kwDOA" }],
     }));
 
@@ -880,7 +946,7 @@ describe("polyglot", () => {
     await using fixture = await createPolyglotFixture();
     const cwd = fixture.path;
     await updateGithubContext(cwd);
-    mockedGithubMethods.pulls.list.mockImplementationOnce(() => ({ data: [] }));
+    mockedGithubMethods.pulls.list.mockImplementation(() => ({ data: [] }));
     mockedGithubMethods.pulls.create.mockImplementationOnce(() => ({
       data: { number: 7 },
     }));
@@ -939,6 +1005,10 @@ describe("polyglot", () => {
         { name: "pkg-a", version: "1.0.0" },
         { name: "crate-b", version: "0.3.0" },
       ]),
+      released: expect.arrayContaining([
+        { name: "pkg-a", version: "1.0.0", tag: "pkg-a@1.0.0" },
+        { name: "crate-b", version: "0.3.0", tag: "crate-b@0.3.0" },
+      ]),
       exitCode: 0,
     });
     const releases = mockedGithubMethods.repos.createRelease.mock.calls.map(
@@ -978,6 +1048,41 @@ describe("publish comments on the released pull requests", () => {
       } else {
         expect(mockedGithubMethods.repos.getCommit).not.toHaveBeenCalled();
       }
+    },
+  );
+});
+
+describe("publish credits from the changelog (a release from commits)", () => {
+  // pkg-a's changelog links #31, under 1.0.0 or under an older heading.
+  it.each([
+    ["1.0.0", [31]],
+    ["0.9.0", []],
+  ])(
+    "credits a linked PR only under the released version's heading (%s)",
+    async (heading, credited) => {
+      await using fixture = await createPolyglotFixture();
+      const cwd = fixture.path;
+      await fs.writeFile(
+        path.join(cwd, "packages/pkg-a/CHANGELOG.md"),
+        `# pkg-a\n\n## ${heading}\n\n### Major Changes\n\n- [#31](https://github.com/changesets/action/pull/31) Node first release\n`,
+      );
+      await updateGithubContext(cwd);
+      vi.stubEnv("RUNNER_TEMP", cwd);
+
+      await runPublish({
+        script: `${process.env.SHIPRIG_BIN} tag`,
+        github: createGithub(cwd),
+        createGithubReleases: false,
+        pushGitTags: true,
+        commentReleasedPrs: true,
+        cwd,
+      });
+
+      expect(
+        mockedGithubMethods.issues.createComment.mock.calls.map(
+          ([arg]) => arg.issue_number,
+        ),
+      ).toEqual(credited);
     },
   );
 });
