@@ -1,8 +1,8 @@
 import { pathToFileURL } from "node:url";
 import type * as github from "@actions/github";
-import { getReleasePlan } from "@changesets/get-release-plan";
 import { exec } from "tinyexec";
 import { describe, expect, it } from "vitest";
+import { readReleasePlan } from "../shiprig.ts";
 import { gitdir, shallowClone, testdir } from "../test-utils.ts";
 import { getPullRequestWorktree } from "./worktree.ts";
 
@@ -109,7 +109,10 @@ Add pkg-a
       checkoutRepo,
     );
 
-    const releasePlan = await getReleasePlan(worktree.cwd, worktree.baseRef);
+    // shiprig plans inside the detached worktree the action runs it in.
+    const releases = await readReleasePlan(worktree.cwd, {
+      since: worktree.baseRef,
+    });
 
     const currentHead = await git(worktree.cwd, ["rev-parse", "HEAD"]);
     expect(currentHead).not.toBe(originalHead);
@@ -117,11 +120,6 @@ Add pkg-a
     const currentBranch = await git(worktree.cwd, ["branch", "--show-current"]);
     expect(currentBranch).toBe("");
 
-    const releases = releasePlan.releases.map((release) => ({
-      name: release.name,
-      type: release.type,
-      newVersion: release.newVersion,
-    }));
     expect(releases).toEqual([
       {
         name: "pkg-a",
