@@ -1,0 +1,21 @@
+.github/actions/ci-setup/action.yml
+  s_df06cc81ca93a0::t_3e17e91b6da4a6 39-41,46
+.github/workflows/ci.yml
+  s_df06cc81ca93a0::t_3e17e91b6da4a6 50-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "9b1824ae05f6aa768ae82c538487d4ddeb135816",
+  "prompts": {},
+  "sessions": {
+    "s_df06cc81ca93a0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea084e0d-e516-4120-9276-01a2c9e861f3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "John Campion Jr <john@brightshore.io>"
+    }
+  }
+}
