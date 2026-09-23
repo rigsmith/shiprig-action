@@ -1,13 +1,31 @@
-// The tests run the real shiprig. An older one on PATH lacks the contracts
-// the action uses and fails in confusing ways, so the binary is named
-// explicitly: CI installs the pinned release from npm; locally, do the same
-// (or build rigsmith) and point SHIPRIG_BIN at it.
+import { execFileSync } from "node:child_process";
+import path from "node:path";
+
+// The tests run the real shiprig: by default the exact version pinned in
+// devDependencies (its tarball's integrity is in pnpm-lock.yaml), or
+// SHIPRIG_BIN to test against another build. Either is checked for the
+// contract the action relies on before any test runs, so a missing or older
+// binary fails here with a clear message rather than inside the tests.
 export default function setup() {
-  if (!process.env.SHIPRIG_BIN) {
+  const bin =
+    process.env.SHIPRIG_BIN ||
+    path.resolve(import.meta.dirname, "..", "node_modules", ".bin", "shiprig");
+  let help: string;
+  try {
+    help = execFileSync(bin, ["packages", "list", "--help"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch (err) {
     throw new Error(
-      "Set SHIPRIG_BIN to a shiprig >= 1.20.0 binary to run the tests, e.g. " +
-        "`npm install --prefix /tmp/shiprig @rigsmith/shiprig@1.20.0` and " +
-        "SHIPRIG_BIN=/tmp/shiprig/node_modules/.bin/shiprig.",
+      `Can't run shiprig at ${bin}: run \`pnpm install\`, or set SHIPRIG_BIN to a shiprig >= 1.20.0.`,
+      { cause: err },
     );
   }
+  if (!help.includes("--json")) {
+    throw new Error(
+      `shiprig at ${bin} has no \`packages list --json\`: the tests need shiprig >= 1.20.0.`,
+    );
+  }
+  process.env.SHIPRIG_BIN = bin;
 }

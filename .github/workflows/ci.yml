@@ -47,8 +47,6 @@ jobs:
 
       - name: Test
         run: pnpm test
-        env:
-          SHIPRIG_BIN: ${{ runner.temp }}/shiprig/node_modules/.bin/shiprig
 
   typecheck:
     name: Typecheck

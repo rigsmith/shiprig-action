@@ -27,14 +27,3 @@ runs:
     - name: Install dependencies
       shell: bash
       run: pnpm install --frozen-lockfile
-
-    # The tests run the real shiprig (docs/DESIGN.md): the released 1.20.0, the
-    # first with every contract the action uses, pinned to the exact version
-    # and installed from npm (published with provenance). It goes to a fixed
-    # path the test step names itself (SHIPRIG_BIN), rather than being exported
-    # through GITHUB_ENV, which zizmor flags as an injection surface.
-    - name: Install shiprig
-      shell: bash
-      env:
-        SHIPRIG_VERSION: 1.20.0
-      run: npm install --prefix "$RUNNER_TEMP/shiprig" --no-audit --no-fund "@rigsmith/shiprig@${SHIPRIG_VERSION}"
