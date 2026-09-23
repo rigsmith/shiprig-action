@@ -64,7 +64,7 @@ jobs:
           node-version: 22
 
       - name: Install shiprig
-        run: npm install -g @rigsmith/shiprig@1.20.2
+        run: npm install -g @rigsmith/shiprig@1.20.3
 
       - uses: rigsmith/shiprig-action@v0
         with:
@@ -181,7 +181,7 @@ runs the shiprig it was tested with.
 - **npm** (any runner with Node; published with provenance):
 
   ```yaml
-  - run: npm install -g @rigsmith/shiprig@1.20.2
+  - run: npm install -g @rigsmith/shiprig@1.20.3
   ```
 
 - **The install script** (Linux and macOS runners):
