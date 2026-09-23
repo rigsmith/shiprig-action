@@ -13,11 +13,17 @@ import pkgJson from "../package.json" with { type: "json" };
 const tag = `v${pkgJson.version}`;
 const releaseLine = `v${pkgJson.version.split(".")[0]}`;
 const isPrerelease = pkgJson.version.includes("-");
+// GITHUB_TOKEN is the action's github-token (the shipRig App's): it reads the
+// GitHub release. The git pushes below use RELEASE_GIT_TOKEN, the job's own
+// GITHUB_TOKEN, as release.yml sets it: the App has no `workflows`
+// permission, and moving vN over commits that touch .github/workflows needs
+// the job token's push rights, not the App's.
 const githubToken = process.env.GITHUB_TOKEN;
 if (!githubToken) {
   throw new Error("GITHUB_TOKEN is required");
 }
-const basic = Buffer.from(`x-access-token:${githubToken}`).toString("base64");
+const gitToken = process.env.RELEASE_GIT_TOKEN || githubToken;
+const basic = Buffer.from(`x-access-token:${gitToken}`).toString("base64");
 const gitEnv = {
   ...process.env,
   GIT_CONFIG_COUNT: "1",

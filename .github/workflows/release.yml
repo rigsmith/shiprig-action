@@ -8,7 +8,8 @@
 # The action acts as the shipRig GitHub App (org variable
 # SHIPRIG_APP_CLIENT_ID, org secret SHIPRIG_APP_PRIVATE_KEY), so the version PR
 # it opens gets its CI without "Approve workflows to run". The release script's
-# git pushes (release commit, tag, vN) still use the checkout's GITHUB_TOKEN.
+# git pushes (release commit, tag, vN) use the job's GITHUB_TOKEN instead,
+# passed as RELEASE_GIT_TOKEN.
 name: Release
 
 on:
@@ -56,6 +57,9 @@ jobs:
           # The lockfile-pinned shiprig (devDependency), for the action itself;
           # the scripts find it on PATH through pnpm.
           SHIPRIG_BIN: ${{ github.workspace }}/node_modules/.bin/shiprig
+          # scripts/release.ts pushes the release commit, tag and vN with this,
+          # not the App token the action passes it as GITHUB_TOKEN.
+          RELEASE_GIT_TOKEN: ${{ github.token }}
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           version-script: pnpm bump

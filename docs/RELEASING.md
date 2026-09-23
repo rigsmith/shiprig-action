@@ -28,10 +28,14 @@ commits.
 
 ## Requirements
 
-- **The shipRig GitHub App**, installed on this repository, with its client ID
-  in the org variable `SHIPRIG_APP_CLIENT_ID` and its private key in the org
-  secret `SHIPRIG_APP_PRIVATE_KEY`. The action opens and updates the version PR
+- **The shipRig GitHub App**, installed on this repository with the repository
+  permissions **Contents: read and write** and **Pull requests: read and
+  write** (the token step asks for both and fails if the installation lacks
+  either), its client ID in the org variable `SHIPRIG_APP_CLIENT_ID` and its
+  private key in the org secret `SHIPRIG_APP_PRIVATE_KEY`. The action opens and updates the version PR
   as the App (`shiprig[bot]`), so the PR's CI runs without **Approve workflows
   to run**, which a PR opened with `GITHUB_TOKEN` would need.
 - The release script's git pushes (the release commit, the tag and the `vN`
-  branch) use the job's `GITHUB_TOKEN`, which has `contents: write`.
+  branch) use the job's `GITHUB_TOKEN`, which has `contents: write`, passed as
+  `RELEASE_GIT_TOKEN`. The action hands the script the App token as
+  `GITHUB_TOKEN`, which it uses only to read the GitHub release.
