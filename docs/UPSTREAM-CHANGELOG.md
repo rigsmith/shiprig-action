@@ -1,4 +1,8 @@
-# @changesets/action
+# @changesets/action (upstream)
+
+The changelog of [changesets/action](https://github.com/changesets/action) up to
+v2.1.2, the version shiprig-action was forked from. shiprig-action's own changes
+are in [CHANGELOG.md](../CHANGELOG.md).
 
 ## 2.1.2
 
