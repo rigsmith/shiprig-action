@@ -107,6 +107,37 @@ publishes on every push with nothing pending, as changesets/action does, and
 relies on the publish script to skip what's already out. The job needs
 `pull-requests: read` (or a `github-token` with it) to look the PR up.
 
+### Settings in a file
+
+The inputs that shape the version PR and the release can live in a committed
+`shiprig-action.jsonc` (or `.json`) instead of the workflow, as release-please
+keeps its settings in `release-please-config.json`:
+
+```jsonc
+// .github/shiprig-action.jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/rigsmith/shiprig-action/main/schema/shiprig-action.json",
+  "prTitle": "chore: release",
+  "prDraft": "create",
+  "publishOn": "version-pr-merge",
+  "createGithubReleases": false,
+}
+```
+
+- **Where:** `.github/` at the repository root, `.changeset/`, or the
+  directory the action runs in (`cwd`). More than one is an error that names
+  them all.
+- **Keys:** `prTitle`, `commitMessage`, `prDraft`, `prBaseBranch`,
+  `publishOn`, `createGithubReleases`, `pushGitTags` and `pushWithGitCli`, each
+  standing in for the input of the same name. An unknown key or a wrong type
+  fails the run; comments and trailing commas are fine.
+- **Precedence:** an input set in the workflow wins, then the file, then the
+  default.
+- It's separate from shiprig's own release-pipeline config
+  (`release.jsonc` / `shiprig.jsonc`), which configures `shiprig release`.
+
+The root action and the `version` and `publish` sub-actions all read it.
+
 ### Conventional commits
 
 shiprig reads the versioning source from its changeset config. To release from
