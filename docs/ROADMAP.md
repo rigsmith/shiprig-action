@@ -53,8 +53,8 @@ version-pr-merge`, the default, publishes on the push that merges
   `.changeset/` or the working directory (more than one is an error); keys
   stand in for the inputs of the same name; an input set in the workflow wins,
   then the file, then the default; a schema in `schema/shiprig-action.json`.
-  Labels, Release-As (item 5) and a PR per package (item 6) can join it when
-  they exist.
+  The hold label (`holdLabel`), Release-As (`releaseAs`, item 5) and a PR
+  per group (`separatePullRequests`, item 6) have since joined it.
 - **"Released in" comments** (v0.5.0). After a release, each pull request
   whose changeset shipped is told which package versions it went out in, as
   release-please and semantic-release do. Found through the changesets the
@@ -93,12 +93,12 @@ Let an app and a library release on different schedules (release-please's
 `separate-pull-requests`). Matters most in polyglot repos like tweed.
 Built, waiting on an engine release:
 
-- **Engine** (rigsmith, `feat/release-groups`): `status --output` reports
+- **Engine** (rigsmith/rigsmith#481): `status --output` reports
   each release's `group` (one changeset naming both, a dependency link, a
   fixed or linked group, a shared version file), and `version --only <pkg>`
   versions just the named packages alongside the config's `ignore`. Ships in
   shiprig 1.22.0, which needs sign-off.
-- **Action** (`feat/separate-pull-requests`): `separate-pull-requests` opens
+- **Action** (#34): `separate-pull-requests` opens
   `changeset-release/<base>/<group>` per group, closes the PRs of groups
   with nothing pending (not held ones), publishes on the merge of any group's
   PR, and reports `pr-numbers`. Its tests run against a source build until
