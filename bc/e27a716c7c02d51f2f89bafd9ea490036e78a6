@@ -1,0 +1,37 @@
+src/publish/index.ts
+  s_505a2cfce9114c::t_f54d6bf5c71d52 5,15
+src/version/index.ts
+  s_505a2cfce9114c::t_f54d6bf5c71d52 19
+  s_505a2cfce9114c::t_e39ff846cb772b 5
+src/shiprig.test.ts
+  s_505a2cfce9114c::t_e39ff846cb772b 5,11-12,247-302
+pnpm-lock.yaml
+  ai_agent 75-76,530-531,535-536,540-541,545-546,550-551,555-556,560-561,2019,2022,2025,2028,2031,2034,2037,2039-2044
+src/index.ts
+  s_505a2cfce9114c::t_f54d6bf5c71d52 37
+  s_505a2cfce9114c::t_d80b9d5682b154 7-10
+src/pr-status/index.ts
+  s_505a2cfce9114c::t_f54d6bf5c71d52 3,13
+src/shiprig.ts
+  s_505a2cfce9114c::t_900a8f2899d683 15,23-29,75-132
+package.json
+  s_505a2cfce9114c::t_d1a61ed750f866 43
+pnpm-workspace.yaml
+  s_505a2cfce9114c::t_d1a61ed750f866 26-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "bce27a716c7c02d51f2f89bafd9ea490036e78a6",
+  "prompts": {},
+  "sessions": {
+    "s_505a2cfce9114c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26f83a80-3cb9-404d-829c-6b4925947f16",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "John Campion Jr <john@brightshore.io>"
+    }
+  }
+}
