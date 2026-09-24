@@ -23,13 +23,13 @@ minimumReleaseAgeExclude:
   - "vite@8.2.0"
   # First-party: shiprig, which the tests run, published from rigsmith's
   # release workflow with provenance. Pinned per version, as above.
-  - "@rigsmith/shiprig@1.20.3"
-  - "@rigsmith/shiprig-darwin-arm64@1.20.3"
-  - "@rigsmith/shiprig-darwin-x64@1.20.3"
-  - "@rigsmith/shiprig-linux-arm64@1.20.3"
-  - "@rigsmith/shiprig-linux-x64@1.20.3"
-  - "@rigsmith/shiprig-win32-arm64@1.20.3"
-  - "@rigsmith/shiprig-win32-x64@1.20.3"
+  - "@rigsmith/shiprig@1.21.0"
+  - "@rigsmith/shiprig-darwin-arm64@1.21.0"
+  - "@rigsmith/shiprig-darwin-x64@1.21.0"
+  - "@rigsmith/shiprig-linux-arm64@1.21.0"
+  - "@rigsmith/shiprig-linux-x64@1.21.0"
+  - "@rigsmith/shiprig-win32-arm64@1.21.0"
+  - "@rigsmith/shiprig-win32-x64@1.21.0"
 
 overrides:
   lightningcss: "-" # we do not bundle any css

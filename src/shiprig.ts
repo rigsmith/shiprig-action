@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import * as core from "@actions/core";
 import {
   exec,
   getExecOutput,
@@ -19,8 +20,13 @@ import {
   type ExecOutput,
 } from "@actions/exec";
 
-/** The first shiprig release with every contract this action relies on. */
-export const MIN_SHIPRIG_VERSION = "1.20.0";
+/**
+ * The first shiprig release with every contract this action relies on: the
+ * split publish flow (publish-plan, pack, publish --from-pack-dir), the
+ * branch-scoped `--since` previews pr-status uses, and a `--version` a script
+ * can read.
+ */
+export const MIN_SHIPRIG_VERSION = "1.21.0";
 
 /** The shiprig binary: $SHIPRIG_BIN when set, else `shiprig` on PATH. */
 export function shiprigBin(): string {
@@ -65,6 +71,65 @@ type PackagesJson = {
     changelog: string;
   })[];
 };
+
+let checked: Promise<void> | undefined;
+
+/**
+ * Fails unless shiprig is MIN_SHIPRIG_VERSION or later, once per run.
+ * `shiprig --version` prints the bare version when piped (1.21.0 on); an
+ * older shiprig prints its banner there, which reads as too old. A source
+ * build has no version and passes with a warning.
+ */
+export function requireShiprig(): Promise<void> {
+  checked ??= (async () => {
+    let out: ExecOutput;
+    try {
+      out = await getExecOutputShiprig(["--version"], {
+        silent: true,
+        ignoreReturnCode: true,
+      });
+    } catch (err) {
+      throw tooOld("Running shiprig", err);
+    }
+    const version = out.stdout.trim();
+    if (version.startsWith("source build")) {
+      core.warning(
+        `shiprig is a source build (${version}); assuming it has what shiprig-action ${MIN_SHIPRIG_VERSION} needs.`,
+      );
+      return;
+    }
+    if (out.exitCode !== 0 || !atLeast(version, MIN_SHIPRIG_VERSION)) {
+      const found = /^\d+\.\d+\.\d+/.test(version)
+        ? `shiprig ${version}`
+        : "an older shiprig (its --version isn't a bare version)";
+      throw new Error(
+        `shiprig-action needs shiprig ${MIN_SHIPRIG_VERSION} or later on PATH (or at $SHIPRIG_BIN); found ${found}. ` +
+          `Install: https://rigsmith.dev/guide/install`,
+      );
+    }
+  })();
+  return checked;
+}
+
+/** For tests: forget the cached check. */
+export function resetShiprigCheck() {
+  checked = undefined;
+}
+
+/**
+ * Whether version (x.y.z, maybe with a prerelease) is at least min (x.y.z).
+ * A prerelease of min counts as below it, as semver orders them.
+ */
+export function atLeast(version: string, min: string): boolean {
+  const m = /^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?(\+.*)?$/.exec(version);
+  if (!m) return false;
+  const have = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const want = min.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    if (have[i] !== want[i]) return have[i] > want[i];
+  }
+  return m[4] === undefined;
+}
 
 function tooOld(what: string, err: unknown): Error {
   return new Error(

@@ -2,6 +2,7 @@ import * as core from "@actions/core";
 import { loadConfig, resolveSetting } from "../config.ts";
 import { GitHub } from "../github.ts";
 import { runVersion } from "../run.ts";
+import { requireShiprig } from "../shiprig.ts";
 import {
   getOptionalInput,
   getRequiredInput,
@@ -15,6 +16,7 @@ try {
 }
 
 async function main() {
+  await requireShiprig();
   const cwd = getOptionalInput("cwd") || process.cwd();
   throwOnRemovedCommitModeInput();
 
