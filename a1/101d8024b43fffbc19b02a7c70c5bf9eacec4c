@@ -1,0 +1,28 @@
+pr-status/README.md
+  s_505a2cfce9114c::t_11eaf996adf208 14
+src/shiprig.ts
+  s_505a2cfce9114c::t_7cdedf1ac803a8 81-83,90,98
+  s_505a2cfce9114c::t_efdbc35697226b 11,16,25-26,89,91,95,97,99,101,103-104,112-113,130-136,142
+src/shiprig.test.ts
+  s_505a2cfce9114c::t_7cdedf1ac803a8 13,262,264-268,275-277,279-283,301-325
+publish/README.md
+  s_505a2cfce9114c::t_11eaf996adf208 9
+version/README.md
+  s_505a2cfce9114c::t_11eaf996adf208 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "a1101d8024b43fffbc19b02a7c70c5bf9eacec4c",
+  "prompts": {},
+  "sessions": {
+    "s_505a2cfce9114c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26f83a80-3cb9-404d-829c-6b4925947f16",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
