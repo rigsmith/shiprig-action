@@ -14,7 +14,9 @@ import {
   releaseTitle,
   runPublish,
   runVersion,
+  releaseAsArgs,
 } from "./run.ts";
+import type { ShiprigPackage } from "./shiprig.ts";
 import { gitdir } from "./test-utils.ts";
 
 vi.mock("@actions/github", () => ({
@@ -1199,6 +1201,101 @@ describe("publish credits from the changelog (a release from commits)", () => {
       ).toEqual(credited);
     },
   );
+});
+
+describe("releaseAs", () => {
+  const pkg = (name: string, version: string, bump?: string) =>
+    ({
+      name,
+      version,
+      bump,
+      nextVersion: bump ? "1.1.0" : undefined,
+      ecosystem: "node",
+      dir: "/x",
+      private: false,
+      ignored: false,
+      changelog: "/x/CHANGELOG.md",
+    }) as ShiprigPackage;
+
+  it("passes an entry for a releasing package below its version", () => {
+    expect(
+      releaseAsArgs({ a: "2.0.0" }, [pkg("a", "1.0.0", "minor")], undefined),
+    ).toEqual(["a=2.0.0"]);
+  });
+
+  it("skips a package that isn't releasing, or is already there", () => {
+    expect(
+      releaseAsArgs(
+        { idle: "2.0.0", done: "2.0.0", past: "2.0.0" },
+        [
+          pkg("idle", "1.0.0"),
+          pkg("done", "2.0.0", "minor"),
+          pkg("past", "2.1.0", "patch"),
+        ],
+        undefined,
+      ),
+    ).toEqual([]);
+  });
+
+  it("waits out a prerelease", () => {
+    expect(
+      releaseAsArgs({ a: "2.0.0" }, [pkg("a", "1.0.0", "minor")], {
+        tag: "next",
+      }),
+    ).toEqual([]);
+  });
+
+  it("refuses a package that isn't in the workspace", () => {
+    expect(() => releaseAsArgs({ nope: "2.0.0" }, [], undefined)).toThrow(
+      "isn't a package in this workspace",
+    );
+  });
+
+  it("releases the version PR at the exact version", async () => {
+    await using fixture = await createSimpleProjectFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    mockedGithubMethods.pulls.list.mockImplementation(() => ({ data: [] }));
+    mockedGithubMethods.pulls.create.mockImplementationOnce(() => ({
+      data: { number: 123 },
+    }));
+    await writeChangesets(
+      [
+        {
+          releases: [
+            { name: "changesets-dev-simple-project-pkg-a", type: "minor" },
+            { name: "changesets-dev-simple-project-pkg-b", type: "minor" },
+          ],
+          summary: "Awesome feature",
+        },
+      ],
+      cwd,
+    );
+
+    await runVersion({
+      github: createGithub(cwd),
+      cwd,
+      releaseAs: { "changesets-dev-simple-project-pkg-a": "3.0.0" },
+    });
+
+    const title = mockedGithubMethods.pulls.create.mock.calls[0][0].title;
+    expect(title).toContain("3.0.0");
+    expect(title).toContain("1.1.0"); // pkg-b keeps its computed minor
+  });
+
+  it("refuses releaseAs alongside a custom version script", async () => {
+    await using fixture = await createSimpleProjectFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    await expect(
+      runVersion({
+        github: createGithub(cwd),
+        cwd,
+        script: "echo custom",
+        releaseAs: { "changesets-dev-simple-project-pkg-a": "3.0.0" },
+      }),
+    ).rejects.toThrow("can't be combined with a custom version-script");
+  });
 });
 
 describe("releaseTitle", () => {
