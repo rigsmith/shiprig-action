@@ -4,7 +4,12 @@ import path from "node:path";
 import { exec } from "tinyexec";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GitHub } from "./github.ts";
-import { createGitHttpRemote, shallowClone, testdir } from "./test-utils.ts";
+import {
+  createGitHttpRemote,
+  describeGitHttpRequests,
+  shallowClone,
+  testdir,
+} from "./test-utils.ts";
 
 const githubContext = vi.hoisted(() => ({
   repo: {
@@ -57,6 +62,7 @@ async function pushChangedFile(
   repository: string,
   serverUrl: string,
   token: string,
+  remotes: GitHttpRemote[],
 ) {
   await fs.writeFile(path.join(repository, "file.txt"), "changed\n");
   const github = new GitHub({
@@ -65,10 +71,17 @@ async function pushChangedFile(
     pushWithGitCli: true,
     serverUrl,
   });
-  await github.pushChanges({
-    branch: "changeset-release/main",
-    message: "Version Packages",
-  });
+  try {
+    await github.pushChanges({
+      branch: "changeset-release/main",
+      message: "Version Packages",
+    });
+  } catch (error) {
+    throw new Error(
+      `push failed; the remotes saw:\n${describeGitHttpRequests(remotes)}`,
+      { cause: error },
+    );
+  }
   return github;
 }
 
@@ -123,7 +136,9 @@ describe("GitHub", () => {
       `AUTHORIZATION: ${getAuthorization(checkoutToken)}`,
     ]);
 
-    const github = await pushChangedFile(repository, serverUrl, actionToken);
+    const github = await pushChangedFile(repository, serverUrl, actionToken, [
+      remote,
+    ]);
     await git(repository, ["tag", "v1.0.0"]);
     withOctokit(github, { git: { getRef: notFound } });
     await github.pushTag("v1.0.0");
@@ -155,7 +170,7 @@ describe("GitHub", () => {
       `AUTHORIZATION: ${getAuthorization("checkout-token")}`,
     ]);
 
-    await pushChangedFile(repository, remoteUrl.origin, actionToken);
+    await pushChangedFile(repository, remoteUrl.origin, actionToken, [remote]);
 
     await expectReleaseBranch(remote, repository);
     expectRequestsToUseToken(remote, actionToken);
@@ -176,6 +191,7 @@ describe("GitHub", () => {
       repository,
       new URL(fetchRemote.url).origin,
       actionToken,
+      [fetchRemote, pushRemote],
     );
 
     expect(fetchRemote.requests).toEqual([]);
@@ -204,6 +220,7 @@ describe("GitHub", () => {
       repository,
       new URL(firstRemote.url).origin,
       actionToken,
+      [firstRemote, secondRemote],
     );
 
     for (const remote of [firstRemote, secondRemote]) {
@@ -229,6 +246,7 @@ describe("GitHub", () => {
       repository,
       new URL(fetchRemote.url).origin,
       actionToken,
+      [fetchRemote, pushRemote],
     );
 
     expect(fetchRemote.requests).toEqual([]);
