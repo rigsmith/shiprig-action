@@ -105,6 +105,26 @@ Built, waiting on an engine release:
   1.22.0 is out; then the pinned shiprig moves and `MIN_SHIPRIG_VERSION`
   stays at 1.21.0 (the input checks the plan for groups instead).
 
+### 9. A release record (comparison item 2)
+
+release-please records what it released and where; canon @changesets trusts
+`package.json`. Built in the engine, waiting on shiprig 1.22.0 like item 6:
+
+- **The record** (rigsmith/rigsmith#482): opt-in `versioning.record` writes
+  the version every package releases at into `.changeset/versions.json`
+  (`released`), stamped or not. `doctor` flags a manifest edited by hand and
+  a recorded release that was never tagged.
+- **The last-release commit** (rigsmith/rigsmith#484): with commits as a
+  versioning source, each package counts from the commit that recorded its
+  current release, per package and merge-aware, instead of from a tag.
+- **Tags as a fallback** (rigsmith/rigsmith#485): without a record, the tag
+  lookup now finds tags named as the tag step names them (`name@version`,
+  the `tagTemplate`). It used to find only Go-style `v1.2.0` tags, so
+  commit-sourced monorepos counted their whole history on every release.
+
+The action needs nothing for it: a repository turns it on in
+`.changeset/config.json`.
+
 ## Later
 
 ### 8. Upstream issues
@@ -112,11 +132,6 @@ Built, waiting on an engine release:
 File changesets issues or discussions for comparison items 3, 7, 8 and 9 below.
 A change to release decisions, like pre-1.0 behaviour (item 8), goes upstream
 first, since shiprig matches canon @changesets.
-
-### 9. A release record (comparison item 2)
-
-release-please records the last release commit; shiprig only records
-versions it didn't stamp (`.changeset/versions.json`).
 
 ### 10. Commit and PR links by default (comparison item 6)
 
@@ -155,19 +170,19 @@ it as the consequence of files that happen to be present. Items 2, 3, 7 and 9
 come from that difference. The last column is where shiprig and this action
 stand.
 
-| #   | Idea                                        | release-please                             | changesets/action                          | shiprig / shiprig-action                                                           |
-| --- | ------------------------------------------- | ------------------------------------------ | ------------------------------------------ | ---------------------------------------------------------------------------------- |
-| 1   | More than npm                               | Strategies for many ecosystems             | `package.json` only                        | **Covered**: shiprig's ecosystem adapters                                          |
-| 2   | A record of what was released               | Manifest plus `last-release-sha`           | Trusts `package.json`                      | Partial: `.changeset/versions.json` for unstamped versions; no last-release commit |
-| 3   | Publish only when the release PR merges     | `autorelease: pending` → `tagged` labels   | Publishes on every push with no changesets | **Covered**: `publish-on` (v0.3.0)                                                 |
-| 4   | Tags and GitHub Releases without a registry | The tag and GitHub Release are the release | Via `changeset publish` / `git-tag`        | **Covered**: `shiprig tag`, and the action's GitHub releases                       |
-| 5   | Changelog sections by type                  | `changelog-sections`                       | Major/Minor/Patch only                     | **Covered**: groups by conventional type                                           |
-| 6   | Commit and PR links by default              | On by default                              | Needs `changelog-github` and a token       | Partial: supported, not the default                                                |
-| 7   | Forcing a version                           | `Release-As:`                              | None                                       | **Covered**: `releaseAs` (shiprig 1.21.0 `--release-as`)                           |
-| 8   | Pre-1.0 behaviour                           | `bump-minor-pre-major`                     | A major on 0.x goes to 1.0.0               | **Open**, upstream first                                                           |
-| 9   | Separate or grouped release PRs             | `separate-pull-requests`                   | One PR for everything                      | **Built**: item 6, awaiting shiprig 1.22.0                                         |
-| 10  | A fallback when authors forget              | Every conventional commit counts           | The bot only comments                      | Partial: `versioning.source: both`                                                 |
-| 11  | Config in one file                          | `release-please-config.json`               | Workflow inputs                            | **Covered**: `shiprig-action.jsonc` (v0.4.0)                                       |
+| #   | Idea                                        | release-please                             | changesets/action                          | shiprig / shiprig-action                                                |
+| --- | ------------------------------------------- | ------------------------------------------ | ------------------------------------------ | ----------------------------------------------------------------------- |
+| 1   | More than npm                               | Strategies for many ecosystems             | `package.json` only                        | **Covered**: shiprig's ecosystem adapters                               |
+| 2   | A record of what was released               | Manifest plus `last-release-sha`           | Trusts `package.json`                      | **Built**: opt-in `versioning.record` (item 9, awaiting shiprig 1.22.0) |
+| 3   | Publish only when the release PR merges     | `autorelease: pending` → `tagged` labels   | Publishes on every push with no changesets | **Covered**: `publish-on` (v0.3.0)                                      |
+| 4   | Tags and GitHub Releases without a registry | The tag and GitHub Release are the release | Via `changeset publish` / `git-tag`        | **Covered**: `shiprig tag`, and the action's GitHub releases            |
+| 5   | Changelog sections by type                  | `changelog-sections`                       | Major/Minor/Patch only                     | **Covered**: groups by conventional type                                |
+| 6   | Commit and PR links by default              | On by default                              | Needs `changelog-github` and a token       | Partial: supported, not the default                                     |
+| 7   | Forcing a version                           | `Release-As:`                              | None                                       | **Covered**: `releaseAs` (shiprig 1.21.0 `--release-as`)                |
+| 8   | Pre-1.0 behaviour                           | `bump-minor-pre-major`                     | A major on 0.x goes to 1.0.0               | **Open**, upstream first                                                |
+| 9   | Separate or grouped release PRs             | `separate-pull-requests`                   | One PR for everything                      | **Built**: item 6, awaiting shiprig 1.22.0                              |
+| 10  | A fallback when authors forget              | Every conventional commit counts           | The bot only comments                      | Partial: `versioning.source: both`                                      |
+| 11  | Config in one file                          | `release-please-config.json`               | Workflow inputs                            | **Covered**: `shiprig-action.jsonc` (v0.4.0)                            |
 
 ### Where changesets/action is already ahead: don't copy
 
