@@ -8,10 +8,12 @@
 //   readPreState     → @changesets/pre         (.changeset/pre.json)
 //   execShiprig      → execChangesetsCli       (`shiprig <verb>`)
 
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import * as core from "@actions/core";
 import {
   exec,
@@ -19,6 +21,8 @@ import {
   type ExecOptions as ActionsExecOptions,
   type ExecOutput,
 } from "@actions/exec";
+
+const execFileAsync = promisify(execFile);
 
 /**
  * The first shiprig release with every contract this action relies on: the
@@ -74,32 +78,39 @@ type PackagesJson = {
 
 let checked: Promise<void> | undefined;
 
+/** How long `shiprig --version` gets before the check gives up on it; a
+ * test shortens it. */
+export const versionCheck = { timeoutMs: 30_000 };
+
 /**
  * Fails unless shiprig is MIN_SHIPRIG_VERSION or later, once per run.
  * `shiprig --version` prints the bare version when piped (1.21.0 on); an
  * older shiprig prints its banner there, which reads as too old. A source
- * build has no version and passes with a warning.
+ * build has no version and passes with a warning, but only when the command
+ * succeeded. The command is killed after versionCheck.timeoutMs, so a
+ * shiprig that hangs fails the check rather than the whole job.
  */
 export function requireShiprig(): Promise<void> {
   checked ??= (async () => {
-    let out: ExecOutput;
+    let version: string;
     try {
-      out = await getExecOutputShiprig(["--version"], {
-        silent: true,
-        ignoreReturnCode: true,
+      const { stdout } = await execFileAsync(shiprigBin(), ["--version"], {
+        timeout: versionCheck.timeoutMs,
+        encoding: "utf8",
       });
+      version = stdout.trim();
     } catch (err) {
-      throw tooOld("Running shiprig", err);
+      // Not found, killed by the timeout, or a non-zero exit.
+      throw tooOld("Running `shiprig --version`", err);
     }
-    const version = out.stdout.trim();
     if (version.startsWith("source build")) {
       core.warning(
         `shiprig is a source build (${version}); assuming it has what shiprig-action ${MIN_SHIPRIG_VERSION} needs.`,
       );
       return;
     }
-    if (out.exitCode !== 0 || !atLeast(version, MIN_SHIPRIG_VERSION)) {
-      const found = /^\d+\.\d+\.\d+/.test(version)
+    if (!atLeast(version, MIN_SHIPRIG_VERSION)) {
+      const found = SEMVER.test(version)
         ? `shiprig ${version}`
         : "an older shiprig (its --version isn't a bare version)";
       throw new Error(
@@ -117,11 +128,18 @@ export function resetShiprigCheck() {
 }
 
 /**
+ * A semver version, strictly: no leading zeros, no empty prerelease or build
+ * part. Anything else fails the check rather than being read generously.
+ */
+const SEMVER =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+
+/**
  * Whether version (x.y.z, maybe with a prerelease) is at least min (x.y.z).
  * A prerelease of min counts as below it, as semver orders them.
  */
 export function atLeast(version: string, min: string): boolean {
-  const m = /^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?(\+.*)?$/.exec(version);
+  const m = SEMVER.exec(version);
   if (!m) return false;
   const have = [Number(m[1]), Number(m[2]), Number(m[3])];
   const want = min.split(".").map(Number);

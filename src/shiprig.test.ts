@@ -10,6 +10,7 @@ import {
   readReleasePlan,
   requireShiprig,
   resetShiprigCheck,
+  versionCheck,
   type ShiprigPackage,
 } from "./shiprig.ts";
 import { gitdir } from "./test-utils.ts";
@@ -258,20 +259,28 @@ describe("the shiprig version", () => {
     expect(atLeast("1.9.0", "1.21.0")).toBe(false); // numbers, not strings
   });
 
-  it("isn't a version when it's a banner", () => {
+  it("isn't a version when it's a banner, or not strictly semver", () => {
     expect(atLeast("  ╭─╴ ╶─╮ shipRig v1.20.3", "1.21.0")).toBe(false);
+    expect(atLeast("01.21.0", "1.21.0")).toBe(false);
+    expect(atLeast("1.21.0+", "1.21.0")).toBe(false);
+    expect(atLeast("1.21.0-", "1.21.0")).toBe(false);
+    expect(atLeast("1.21.0-01", "1.20.0")).toBe(false);
+    expect(atLeast("1.21.0+build.5", "1.21.0")).toBe(true);
   });
 
   it("accepts the pinned shiprig", async () => {
     await expect(requireShiprig()).resolves.toBeUndefined();
   });
 
-  // A script standing in for shiprig prints what the given release would.
-  async function fakeShiprig(dir: string, stdout: string) {
+  // A script standing in for shiprig prints what the given release would,
+  // then runs body (an exit, a sleep).
+  async function fakeShiprig(dir: string, stdout: string, body = "") {
     const bin = path.join(dir, "shiprig");
-    await fs.writeFile(bin, `#!/bin/sh\nprintf '%s\\n' '${stdout}'\n`, {
-      mode: 0o755,
-    });
+    await fs.writeFile(
+      bin,
+      `#!/bin/sh\nprintf '%s\\n' '${stdout}'\n${body}\n`,
+      { mode: 0o755 },
+    );
     vi.stubEnv("SHIPRIG_BIN", bin);
   }
 
@@ -286,6 +295,34 @@ describe("the shiprig version", () => {
       resetShiprigCheck();
       await fakeShiprig(fixture.path, "1.20.3");
       await expect(requireShiprig()).rejects.toThrow(/found shiprig 1\.20\.3/);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "refuses a source build whose --version failed",
+    async () => {
+      await using fixture = await workspace();
+      await fakeShiprig(fixture.path, "source build · x", "exit 1");
+      await expect(requireShiprig()).rejects.toThrow(
+        /Running `shiprig --version`/,
+      );
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "gives up on a shiprig that hangs",
+    async () => {
+      await using fixture = await workspace();
+      await fakeShiprig(fixture.path, "1.21.0", "sleep 5");
+      const was = versionCheck.timeoutMs;
+      versionCheck.timeoutMs = 200;
+      try {
+        await expect(requireShiprig()).rejects.toThrow(
+          /Running `shiprig --version`/,
+        );
+      } finally {
+        versionCheck.timeoutMs = was;
+      }
     },
   );
 

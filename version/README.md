@@ -4,7 +4,7 @@ This action versions packages with shiprig and creates or updates a pull request
 
 ## Requirements
 
-- Needs repo checked out and **shiprig ≥ 1.20.0** on `PATH` (or at `$SHIPRIG_BIN`)
+- Needs repo checked out and **shiprig ≥ 1.21.0** on `PATH` (or at `$SHIPRIG_BIN`); checked before anything runs
 - [Job permissions][job-permissions]:
   - `contents: write`: to commit version changes
   - `pull-requests: write`: to create pull request

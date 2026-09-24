@@ -6,7 +6,7 @@ Publishing from a pack directory isn't supported yet: shiprig has no `publish --
 
 ## Requirements
 
-- Needs repo checked out and **shiprig ≥ 1.20.0** on `PATH` (or at `$SHIPRIG_BIN`)
+- Needs repo checked out and **shiprig ≥ 1.21.0** on `PATH` (or at `$SHIPRIG_BIN`); checked before anything runs
 - [Job permissions][job-permissions]:
   - `contents: write`: to push the git tags and create GitHub releases
   - `pull-requests: write`: to comment "released in" on the pull requests
