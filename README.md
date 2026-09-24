@@ -133,6 +133,20 @@ can stay in the file until you tidy it. A prerelease sets its own suffix, so
 it waits for a normal release. It's file-only, and a custom `version-script`
 can't take it (pass `--release-as` to shiprig in the script instead).
 
+**A version PR per release group.** `separate-pull-requests: true` (or
+`separatePullRequests` in `shiprig-action.jsonc`) opens a version PR for each
+group of packages that has to be versioned together, instead of one for
+everything, so an app and a library can release on their own schedules, as
+release-please's `separate-pull-requests` does. Packages share a group when
+one changeset names both, when one depends on the other in the release, when
+they're in a fixed or linked group, or when they share a version file; each
+group's branch is `changeset-release/<base>/<group>`, named after its
+alphabetically first package (`@acme/lib` becomes `acme-lib`). Merging any of
+them publishes. A group's PR is closed once nothing in it is pending, unless
+it's held. It needs shiprig 1.22.0 (whose `status --output` reports the
+groups), and a custom `version-script` can't take it. Files the workflow
+leaves untracked and not ignored in the checkout are cleaned between groups.
+
 **Job summary.** Every run writes what it did to its summary page: the release
 plan and the version PR, what was published and tagged, or why nothing
 happened.
@@ -273,7 +287,10 @@ winget and the rest.
   against the registry.
 - `published-packages`: a JSON array of the packages it reported, each with its
   version when the script ran.
-- `pr-number`: the version PR opened or updated.
+- `pr-number`: the version PR opened or updated (with `separate-pull-requests`,
+  the first group's).
+- `pr-numbers`: a JSON array of every version PR opened or updated: one per
+  group with `separate-pull-requests`.
 
 ## Sub-actions
 
@@ -319,6 +336,7 @@ message change: `chore: release 1.2.0` rather than `Version Packages`. Set
 | `version-script`         | The command to update versions, edit CHANGELOGs, and consume changesets. Defaults to `shiprig version --yes`                                                                                                                                                                                                                                                                                                                                                                            |
 | `commit-message`         | The commit message. Defaults to the pull request's default title. Can also be set as `commitMessage` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                                                                                                                                                                                                          |
 | `pr-title`               | The pull request title. Defaults to `chore: release` plus what it releases: `chore: release 1.2.0` when everything shares one version, `chore: release core@1.2.0, ui@0.5.0` for up to three packages, and `chore: release 5 packages` beyond that. Can also be set as `prTitle` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                              |
+| `separate-pull-requests` | Open a version PR per release group (packages that must be versioned together) instead of one for everything, so packages can release on their own schedules, as release-please's `separate-pull-requests`. Needs shiprig 1.22.0. Defaults to `false`. Can also be set as `separatePullRequests` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                              |
 | `hold-label`             | A label on the version PR that stops the action from updating its branch, so it can be edited by hand. Defaults to `release:hold`. Can also be set as `holdLabel` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                                                                                                                                             |
 | `pr-draft`               | Controls draft PR behavior. Use 'create' to create new version PRs as draft, or 'always' to also convert existing version PRs back to draft when updating them. Can also be set as `prDraft` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                                                                                                                  |
 | `pr-base-branch`         | Sets the base branch of the PR. Defaults to `github.ref_name`. Can also be set as `prBaseBranch` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                                                                                                                                                                                                              |
@@ -334,7 +352,8 @@ message change: `chore: release 1.2.0` rather than `Version Packages`. Set
 | `published`          | A "true" or "false" string value to indicate whether the publish script reported any tag (a `git-tag` event through CHANGESETS_OUTPUT, which `shiprig publish` and `shiprig tag` write). It reflects those reports, not a registry check. |
 | `published-packages` | A JSON array of the packages whose tags the publish script reported, each at its version when the script ran, e.g. `[{"name": "@xx/xx", "version": "1.2.0"}, {"name": "@xx/xy", "version": "0.8.9"}]`                                     |
 | `has-changesets`     | A "true" or "false" string value about whether changeset files exist (including those waiting in .changeset/pre/ after `pre exit`). A release from conventional commits alone doesn't set it.                                             |
-| `pr-number`          | The pull request number that was created or updated                                                                                                                                                                                       |
+| `pr-number`          | The pull request number that was created or updated (with separate-pull-requests, the first group's)                                                                                                                                      |
+| `pr-numbers`         | A JSON array of every version pull request created or updated, one per release group with separate-pull-requests                                                                                                                          |
 
 <!-- api-end -->
 
