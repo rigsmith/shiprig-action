@@ -323,11 +323,29 @@ describe("isVersionPrMerge", () => {
     ).toBe(true);
   });
 
+  it("is true for a merged version PR of one release group", async () => {
+    expect(
+      await withPulls([
+        {
+          ...merged,
+          head: { ...merged.head, ref: "changeset-release/main/acme-lib" },
+        },
+      ]).isVersionPrMerge("changeset-release/main", "main"),
+    ).toBe(true);
+  });
+
   it.each([
     ["an unmerged version PR", { ...merged, merged_at: null }],
     [
       "another branch's PR",
       { ...merged, head: { ...merged.head, ref: "feature" } },
+    ],
+    [
+      "a branch that only starts with the version branch's name",
+      {
+        ...merged,
+        head: { ...merged.head, ref: "changeset-release/main-old" },
+      },
     ],
     [
       "a fork's PR from a branch of the same name",

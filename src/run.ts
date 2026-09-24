@@ -20,6 +20,7 @@ import {
   listPackages,
   readChangelog,
   readPreState,
+  readReleasePlan,
   type ShiprigPackage,
 } from "./shiprig.ts";
 import { getChangelogEntry, sortTheThings } from "./utils.ts";
@@ -372,16 +373,179 @@ type VersionOptions = {
   holdLabel?: string;
   // Release packages at exact versions (`releaseAs` in shiprig-action.jsonc).
   releaseAs?: Record<string, string>;
+  // A version PR per release group instead of one for everything.
+  separatePullRequests?: boolean;
 };
 
 type RunVersionResult = {
-  // Undefined when the run left the version PR alone (stale, or held).
+  // Undefined when the run left the version PR alone (stale, or held). With
+  // a version PR per group, the first group's.
   pullRequestNumber?: number;
+  // Every version PR this run opened or updated (or left held), one per
+  // group; just the one otherwise.
+  pullRequestNumbers?: number[];
   // Why the version PR was left alone, when it was.
   skipped?: "stale" | "held";
 };
 
-export async function runVersion({
+export async function runVersion(
+  options: VersionOptions,
+): Promise<RunVersionResult> {
+  const { script, releaseAs, separatePullRequests } = options;
+  // A custom version script decides versions itself; releaseAs can't reach it.
+  if (script && releaseAs && Object.keys(releaseAs).length > 0) {
+    throw new Error(
+      "`releaseAs` in shiprig-action.jsonc can't be combined with a custom version-script: " +
+        "the script runs its own version command. Pass `--release-as <package>=<version>` to shiprig in the script instead.",
+    );
+  }
+  const branch = options.branch ?? context.ref.replace("refs/heads/", "");
+  const versionBranch = `changeset-release/${branch}`;
+  if (!separatePullRequests) {
+    const result = await runVersionBranch({
+      ...options,
+      branch,
+      versionBranch,
+    });
+    return {
+      ...result,
+      pullRequestNumbers:
+        result.pullRequestNumber === undefined
+          ? []
+          : [result.pullRequestNumber],
+    };
+  }
+  if (script) {
+    throw new Error(
+      "separate-pull-requests can't be combined with a custom version-script: each PR versions one release group with `shiprig version --only`, which the script doesn't run.",
+    );
+  }
+  return runVersionPerGroup({ ...options, branch, versionBranch });
+}
+
+/**
+ * A version PR per release group (release-please's separate-pull-requests):
+ * each group of packages that must move together (`shiprig status
+ * --output`'s group) gets its own branch, `changeset-release/<base>/<group>`,
+ * versioned with `shiprig version --only`, so an app and a library can
+ * release on their own schedules. A group's PR is held, left stale and
+ * rebuilt exactly as the single version PR is. PRs for groups that no longer
+ * release are closed, unless held.
+ */
+async function runVersionPerGroup(
+  options: VersionOptions & { branch: string; versionBranch: string },
+): Promise<RunVersionResult> {
+  const { github, branch, versionBranch } = options;
+  const cwd = options.cwd ?? process.cwd();
+  const { octokit } = github;
+  const holdLabel = options.holdLabel ?? "release:hold";
+
+  const plan = await readReleasePlan(cwd);
+  if (plan.length > 0 && plan.every((r) => r.group === undefined)) {
+    throw new Error(
+      "separate-pull-requests needs shiprig 1.22.0 or later, whose `status --output` reports each package's release group.",
+    );
+  }
+  const groups = new Map<string, string[]>();
+  for (const r of plan) {
+    const group = r.group ?? r.name;
+    groups.set(group, [...(groups.get(group) ?? []), r.name]);
+  }
+
+  const branches = new Set<string>();
+  const numbers: number[] = [];
+  let ran = 0;
+  let held = 0;
+  let first = true;
+  for (const group of [...groups.keys()].sort()) {
+    const members = groups.get(group)!;
+    // Nothing in the group actually releases (range-only rewrites alone).
+    if (!plan.some((r) => members.includes(r.name) && r.type !== "none")) {
+      continue;
+    }
+    const groupBranch = `${versionBranch}/${branchSlug(group)}`;
+    if (branches.has(groupBranch)) {
+      throw new Error(
+        `Two release groups would share the branch ${groupBranch} (group names differing only in punctuation, like @acme/lib and acme-lib). Rename one of the packages, or leave separate-pull-requests off.`,
+      );
+    }
+    branches.add(groupBranch);
+    if (!first) await github.resetToBase();
+    first = false;
+    const result = await runVersionBranch({
+      ...options,
+      versionBranch: groupBranch,
+      only: members,
+    });
+    if (result.skipped === "stale") {
+      return { skipped: "stale" };
+    }
+    ran++;
+    if (result.skipped === "held") held++;
+    if (result.pullRequestNumber !== undefined) {
+      numbers.push(result.pullRequestNumber);
+    }
+  }
+
+  // A group that no longer releases (it merged, or its packages regrouped)
+  // leaves an open PR behind; so does the single version PR after switching
+  // to separate ones. Close them, but never a held one: that's someone's.
+  const { data: open } = await octokit.rest.pulls.list({
+    ...context.repo,
+    state: "open",
+    base: branch,
+    per_page: 100,
+  });
+  for (const pr of open) {
+    const ref = pr.head.ref;
+    const ours =
+      pr.head.repo?.full_name ===
+        `${context.repo.owner}/${context.repo.repo}` &&
+      (ref === versionBranch || ref.startsWith(`${versionBranch}/`));
+    if (!ours || branches.has(ref)) continue;
+    if ((pr.labels ?? []).some((l) => l.name === holdLabel)) {
+      core.info(
+        `#${pr.number} (${ref}) no longer matches a release group, but it has the "${holdLabel}" label, so it stays open.`,
+      );
+      continue;
+    }
+    await octokit.rest.issues.createComment({
+      ...context.repo,
+      issue_number: pr.number,
+      body: "Closing: nothing in this version PR's release group is pending any more (it was released, or its packages now release with another group). An open version PR per group is kept up to date on every push.",
+    });
+    await octokit.rest.pulls.update({
+      ...context.repo,
+      pull_number: pr.number,
+      state: "closed",
+    });
+    core.info(
+      `Closed #${pr.number} (${ref}): its release group has nothing pending.`,
+    );
+  }
+
+  return {
+    pullRequestNumber: numbers[0],
+    pullRequestNumbers: numbers,
+    // Held only when every group was: otherwise the run did update PRs.
+    skipped: ran > 0 && held === ran ? "held" : undefined,
+  };
+}
+
+/** A group name as a branch path segment: @acme/lib becomes acme-lib. */
+export function branchSlug(group: string): string {
+  return (
+    group
+      .replace(/[^A-Za-z0-9._-]+/g, "-")
+      .replace(/^[-.]+|[-.]+$/g, "")
+      .replace(/\.\.+/g, ".")
+      // Git refuses a ref component ending .lock.
+      .replace(/\.lock$/, "-lock") || "group"
+  );
+}
+
+/** One version PR: versionBranch, versioning only `only` when given. */
+async function runVersionBranch({
   script,
   github,
   cwd = process.cwd(),
@@ -393,16 +557,13 @@ export async function runVersion({
   prDraft,
   holdLabel = "release:hold",
   releaseAs,
-}: VersionOptions): Promise<RunVersionResult> {
-  // A custom version script decides versions itself; releaseAs can't reach it.
-  if (script && releaseAs && Object.keys(releaseAs).length > 0) {
-    throw new Error(
-      "`releaseAs` in shiprig-action.jsonc can't be combined with a custom version-script: " +
-        "the script runs its own version command. Pass `--release-as <package>=<version>` to shiprig in the script instead.",
-    );
-  }
+  versionBranch,
+  only,
+}: VersionOptions & {
+  versionBranch: string;
+  only?: string[];
+}): Promise<RunVersionResult> {
   const { octokit } = github;
-  let versionBranch = `changeset-release/${branch}`;
 
   // Release workflows queue their runs (queue: max) rather than drop them, and
   // GitHub doesn't guarantee the order they start in. A run that starts after
@@ -473,7 +634,21 @@ export async function runVersion({
     await exec(script, undefined, { cwd, env });
   } else {
     const args = ["version", "--yes"];
-    for (const spec of releaseAsArgs(releaseAs, packagesBefore, preState)) {
+    for (const name of only ?? []) {
+      args.push("--only", name);
+    }
+    // In a group's run, only that group's releaseAs entries apply.
+    const groupReleaseAs =
+      only && releaseAs
+        ? Object.fromEntries(
+            Object.entries(releaseAs).filter(([name]) => only.includes(name)),
+          )
+        : releaseAs;
+    for (const spec of releaseAsArgs(
+      groupReleaseAs,
+      packagesBefore,
+      preState,
+    )) {
       args.push("--release-as", spec);
     }
     await execShiprig(args, { cwd, env });

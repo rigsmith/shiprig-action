@@ -252,7 +252,14 @@ export async function readChangelog(
 }
 
 /** A release in the plan `shiprig status --output` writes. */
-export type PlannedRelease = { name: string; type: string; newVersion: string };
+export type PlannedRelease = {
+  name: string;
+  type: string;
+  newVersion: string;
+  // The packages that must be versioned together (shiprig 1.22.0 on): the
+  // group's first member.
+  group?: string;
+};
 
 /**
  * What would release now: the plan `shiprig status --output` writes. Empty

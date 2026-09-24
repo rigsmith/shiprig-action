@@ -23,14 +23,15 @@ With `pack-dir-artifact-id`, it downloads the directory [pack](../pack/README.md
 
 <!-- api-start -->
 
-| Inputs                   | Description                                                                                                                                                      |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `github-token`           | The GitHub token to use for authentication. Defaults to the GitHub-provided token. To use a custom token, pass it explicitly to this input.                      |
-| `script`                 | The command to use to publish packages                                                                                                                           |
-| `pack-dir-artifact-id`   | The artifact id [pack](../pack/README.md) output: publish those files with `shiprig publish --from-pack-dir`, building nothing. Can't be combined with `script`. |
-| `create-github-releases` | Whether to create Github releases after publish                                                                                                                  |
-| `push-git-tags`          | Whether to create git tags after publish. If `create-github-releases` is set to `true`, this option will also always be `true`.                                  |
-| `cwd`                    | The working directory to run shiprig (or the custom script) in. Defaults to the root of the repository.                                                          |
+| Inputs                   | Description                                                                                                                                                                                                                                    |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `github-token`           | The GitHub token to use for authentication. Defaults to the GitHub-provided token. To use a custom token, pass it explicitly to this input.                                                                                                    |
+| `script`                 | The command to use to publish packages                                                                                                                                                                                                         |
+| `pack-dir-artifact-id`   | The artifact id the pack sub-action output: publish exactly those files with `shiprig publish --from-pack-dir`, building nothing. Can't be combined with `script`.                                                                             |
+| `create-github-releases` | Whether to create Github releases after publish. Defaults to `true`. Can also be set as `createGithubReleases` in `shiprig-action.jsonc`; this input wins over the file.                                                                       |
+| `comment-released-prs`   | Whether to comment "released in" on each pull request whose changeset shipped, once the tags are pushed. Defaults to `true`. Can also be set as `commentReleasedPrs` in `shiprig-action.jsonc`; this input wins over the file.                 |
+| `push-git-tags`          | Whether to create git tags after publish. If `create-github-releases` is set to `true`, this option will also always be `true`. Defaults to `true`. Can also be set as `pushGitTags` in `shiprig-action.jsonc`; this input wins over the file. |
+| `cwd`                    | The working directory to run shiprig (or the custom script) in. Defaults to the root of the repository.                                                                                                                                        |
 
 | Outputs              | Description                                                                                                                                                                                                                                         |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

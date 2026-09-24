@@ -87,13 +87,23 @@ publish --from-pack-dir` (shiprig 1.21.0), so the build → pack → publish
 
 ## Next
 
-### 6. A version PR per package (E)
+### 6. A version PR per release group (E)
 
 Let an app and a library release on different schedules (release-please's
-`separate-pull-requests`). Matters most in polyglot repos like tweed. shiprig
-1.21.0's `version --ignore` lets one branch version some packages and leave
-the rest; packages that must move together (one changeset naming both, a
-dependency, a fixed or linked group) share a PR.
+`separate-pull-requests`). Matters most in polyglot repos like tweed.
+Built, waiting on an engine release:
+
+- **Engine** (rigsmith, `feat/release-groups`): `status --output` reports
+  each release's `group` (one changeset naming both, a dependency link, a
+  fixed or linked group, a shared version file), and `version --only <pkg>`
+  versions just the named packages alongside the config's `ignore`. Ships in
+  shiprig 1.22.0, which needs sign-off.
+- **Action** (`feat/separate-pull-requests`): `separate-pull-requests` opens
+  `changeset-release/<base>/<group>` per group, closes the PRs of groups
+  with nothing pending (not held ones), publishes on the merge of any group's
+  PR, and reports `pr-numbers`. Its tests run against a source build until
+  1.22.0 is out; then the pinned shiprig moves and `MIN_SHIPRIG_VERSION`
+  stays at 1.21.0 (the input checks the plan for groups instead).
 
 ## Later
 
@@ -155,7 +165,7 @@ stand.
 | 6   | Commit and PR links by default              | On by default                              | Needs `changelog-github` and a token       | Partial: supported, not the default                                                |
 | 7   | Forcing a version                           | `Release-As:`                              | None                                       | **Covered**: `releaseAs` (shiprig 1.21.0 `--release-as`)                           |
 | 8   | Pre-1.0 behaviour                           | `bump-minor-pre-major`                     | A major on 0.x goes to 1.0.0               | **Open**, upstream first                                                           |
-| 9   | Separate or grouped release PRs             | `separate-pull-requests`                   | One PR for everything                      | **Open**: item 6                                                                   |
+| 9   | Separate or grouped release PRs             | `separate-pull-requests`                   | One PR for everything                      | **Built**: item 6, awaiting shiprig 1.22.0                                         |
 | 10  | A fallback when authors forget              | Every conventional commit counts           | The bot only comments                      | Partial: `versioning.source: both`                                                 |
 | 11  | Config in one file                          | `release-please-config.json`               | Workflow inputs                            | **Covered**: `shiprig-action.jsonc` (v0.4.0)                                       |
 
