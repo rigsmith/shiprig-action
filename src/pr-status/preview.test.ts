@@ -14,7 +14,7 @@ import {
   changedPackages,
   changelogMarkdown,
   previewChangelog,
-  versionsFromChangesetsOnly,
+  versioningSource,
 } from "./preview.ts";
 
 afterEach(() => {
@@ -152,61 +152,152 @@ describe("pr-status on shiprig", () => {
 
   it("previews only the pull request's own changelog entries", async () => {
     await using fixture = await pullRequestRepo();
-    const preview = await previewChangelog(fixture.path, [
-      ".changeset/pr-one.md",
-    ]);
+    const preview = await previewChangelog(fixture.path, "main");
     expect(preview).toContain("### pkg-b");
     expect(preview).toContain("#### 1.1.0");
     expect(preview).toContain("The PR adds a feature");
     expect(preview).not.toContain("Already on main");
     expect(preview).not.toContain("pkg-a");
-    // the README and the pull request's changeset survive
+    // `--since` scopes it; nothing in the checkout is touched
     await expect(
-      fs.access(path.join(fixture.path, ".changeset/README.md")),
+      fs.access(path.join(fixture.path, ".changeset/main-one.md")),
     ).resolves.toBeUndefined();
   });
 });
 
+// A repository whose versioning.source is commits: releases come from
+// conventional commits. main has a feat commit to pkg-a already.
+async function commitsRepo(source: "commits" | "both") {
+  const fixture = await pullRequestRepo();
+  const cwd = fixture.path;
+  await git(cwd, "checkout", "-q", "main");
+  await fs.writeFile(
+    path.join(cwd, ".changeset/config.json"),
+    JSON.stringify({ versioning: { source } }),
+  );
+  await fs.writeFile(path.join(cwd, "packages/a/index.js"), "export {};\n");
+  await git(cwd, "add", "-A");
+  await git(cwd, "commit", "-q", "-m", "feat: a thing on main");
+  await git(cwd, "checkout", "-q", "-B", "feature", "main");
+  return fixture;
+}
+
+const aPullRequest = {
+  sha: "abc",
+  title: "Change b",
+  headRepoUrl: "https://github.com/o/r",
+  headRef: "feature",
+};
+
 describe("a repository that also versions from commits", () => {
-  it("leaves the preview out, since shiprig can't limit it to the PR", async () => {
-    await using fixture = await pullRequestRepo();
+  it("plans and previews only the pull request's share", async () => {
+    await using fixture = await commitsRepo("both");
     const cwd = fixture.path;
     vi.stubEnv("RUNNER_TEMP", cwd);
-    // A conventional commit on main, below the pull request's branch.
-    await git(cwd, "checkout", "-q", "main");
     await fs.writeFile(
-      path.join(cwd, ".changeset/config.json"),
-      JSON.stringify({ versioning: { source: "both" } }),
+      path.join(cwd, ".changeset/pr-one.md"),
+      '---\n"pkg-b": minor\n---\n\nThe PR adds a feature\n',
     );
-    await fs.writeFile(path.join(cwd, "packages/a/index.js"), "export {};\n");
     await git(cwd, "add", "-A");
-    await git(cwd, "commit", "-q", "-m", "feat: a thing on main");
-    await git(cwd, "checkout", "-q", "feature");
-    await git(cwd, "rebase", "-q", "main");
+    await git(cwd, "commit", "-q", "-m", "a changeset for b");
 
-    expect(await versionsFromChangesetsOnly(cwd)).toBe(false);
-    const md = await getStatusMessage(cwd, "main", {
-      sha: "abc",
-      title: "Change b",
-      headRepoUrl: "https://github.com/o/r",
-      headRef: "feature",
-    });
-    expect(md).toContain("also versions from conventional commits");
-    expect(md).not.toContain("Changelog preview");
+    expect(await versioningSource(cwd)).toBe("both");
+    const md = await getStatusMessage(cwd, "main", aPullRequest);
+    expect(md).toContain("Changeset detected");
+    // Changesets and commits can both release here: neither is credited.
+    expect(md).toContain("This PR releases 1 package");
+    expect(md).toMatch(/\| pkg-b +\| Minor +\| 1\.1\.0 +\|/);
+    expect(md).toContain("<summary>Changelog preview</summary>");
+    expect(md).toContain("The PR adds a feature");
+    // main's commit and changeset are main's, not the PR's
+    expect(md).not.toContain("pkg-a");
+    expect(md).not.toContain("a thing on main");
+    expect(md).not.toContain("Already on main");
+  });
+
+  it("shows a release from the pull request's commits, with no changeset", async () => {
+    await using fixture = await commitsRepo("commits");
+    const cwd = fixture.path;
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    await fs.writeFile(
+      path.join(cwd, "packages/b/index.js"),
+      "export const z = 3;\n",
+    );
+    await git(cwd, "commit", "-qam", "feat: a new thing in b");
+
+    const md = await getStatusMessage(cwd, "main", aPullRequest);
+    expect(md).toContain("Release detected");
+    expect(md).toContain("This PR's commits release 1 package");
+    expect(md).toMatch(/\| pkg-b +\| Minor +\|/);
+    expect(md).toContain("a new thing in b");
+    expect(md).not.toContain("pkg-a");
+  });
+
+  it("says nothing releases when its commits don't", async () => {
+    await using fixture = await commitsRepo("commits");
+    const cwd = fixture.path;
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    await fs.writeFile(
+      path.join(cwd, "packages/b/index.js"),
+      "export const z = 3;\n",
+    );
+    // No conventional type, so no release (shiprig's default groups release
+    // docs: as a patch).
+    await git(cwd, "commit", "-qam", "tidy b");
+
+    const md = await getStatusMessage(cwd, "main", aPullRequest);
+    // Commits are the only source: the guidance is a releasing commit, and a
+    // changeset link would lead nowhere.
+    expect(md).toContain("No release found");
+    expect(md).toContain("`feat:`");
+    expect(md).not.toContain("add a changeset");
+  });
+
+  // With commits alone as the source, a changeset releases nothing.
+  it("doesn't count a changeset when commits are the only source", async () => {
+    await using fixture = await commitsRepo("commits");
+    const cwd = fixture.path;
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    await fs.writeFile(
+      path.join(cwd, ".changeset/pr-one.md"),
+      '---\n"pkg-b": minor\n---\n\nThe PR adds a feature\n',
+    );
+    await git(cwd, "add", "-A");
+    await git(cwd, "commit", "-q", "-m", "a changeset, no releasing commit");
+
+    const md = await getStatusMessage(cwd, "main", aPullRequest);
+    expect(md).toContain("No release found");
+    expect(md).not.toContain("Changeset detected");
+  });
+
+  it("offers either route when both sources release nothing", async () => {
+    await using fixture = await commitsRepo("both");
+    const cwd = fixture.path;
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    await fs.writeFile(
+      path.join(cwd, "packages/b/index.js"),
+      "export const z = 3;\n",
+    );
+    await git(cwd, "commit", "-qam", "tidy b");
+
+    const md = await getStatusMessage(cwd, "main", aPullRequest);
+    expect(md).toContain("No Changeset found");
+    expect(md).toContain("add a changeset, or give a commit a releasing");
   });
 
   it.each([
-    ["{}", true],
-    ['{ "versioning": { "source": "changesets" } }', true],
-    ['// a comment\n{ "versioning": { "source": "commits" } }', false],
-    ["{ not json", false],
+    ["{}", "changesets"],
+    ['{ "versioning": { "source": "changesets" } }', "changesets"],
+    ['// a comment\n{ "versioning": { "source": "commits" } }', "commits"],
+    ['{ "versioning": { "source": "both" } }', "both"],
+    ["{ not json", "both"],
   ])("reads the source from %s", async (config, expected) => {
     await using fixture = await pullRequestRepo();
     await fs.writeFile(
       path.join(fixture.path, ".changeset/config.json"),
       config,
     );
-    expect(await versionsFromChangesetsOnly(fixture.path)).toBe(expected);
+    expect(await versioningSource(fixture.path)).toBe(expected);
   });
 });
 

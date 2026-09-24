@@ -1,7 +1,5 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 import { exec } from "tinyexec";
-import { stripJsonc } from "../config.ts";
 import { getExecOutputShiprig, listPackages } from "../shiprig.ts";
 
 // The shiprig side of pr-status: which changesets and packages a pull request
@@ -79,56 +77,44 @@ export async function changedPackages(
 }
 
 /**
- * The changelog the pull request's own changesets would write, as Markdown for
- * a comment, or undefined when it can't be shown. Other pending changesets are
- * removed from the worktree first, so only this pull request's entries show;
- * the worktree is thrown away afterwards.
- *
- * Only for a repository that versions from changesets alone
- * (versionsFromChangesetsOnly): with commits as a source, it would add
- * entries for commits already on the base branch, and shiprig can't limit
- * those to the pull request's range.
+ * The changelog entries the pull request adds, as Markdown for a comment, or
+ * undefined when shiprig can't render them. `shiprig version --changelog
+ * --since <base>` renders only the branch's share: its changesets and, with
+ * commits as a versioning source, its commits. It writes nothing.
  */
 export async function previewChangelog(
   cwd: string,
-  own: string[],
+  baseRef: string,
 ): Promise<string | undefined> {
-  const root = (await git(cwd, ["rev-parse", "--show-toplevel"])).trim();
-  const keep = new Set(own);
-  const tracked = (await gitPaths(cwd, ["ls-files"])).filter(isChangeset);
-  for (const file of tracked) {
-    if (!keep.has(file)) await fs.rm(path.join(root, file), { force: true });
-  }
-  const out = await getExecOutputShiprig(["version", "--changelog"], {
-    cwd,
-    ignoreReturnCode: true,
-    silent: true,
-  });
+  const out = await getExecOutputShiprig(
+    ["version", "--changelog", "--since", baseRef],
+    { cwd, ignoreReturnCode: true, silent: true },
+  );
   if (out.exitCode !== 0) return undefined;
   return changelogMarkdown(out.stdout);
 }
 
+/** Where a repository's releases come from: `versioning.source`. */
+export type VersioningSource = "changesets" | "commits" | "both";
+
 /**
- * Whether the changeset config leaves `versioning.source` at changesets, read
- * through `shiprig config show` (the file shiprig resolved, as written). No
- * config is the default, changesets; one that can't be read counts as not.
+ * The repository's versioning source, as `shiprig config show --json`
+ * reports it (the config shiprig resolved, defaults applied, so
+ * `versioning.source` is always there). One that can't be read counts as
+ * "both", the source whose comment asks the plan either way.
  */
-export async function versionsFromChangesetsOnly(
-  cwd: string,
-): Promise<boolean> {
-  const out = await getExecOutputShiprig(["config", "show"], {
+export async function versioningSource(cwd: string): Promise<VersioningSource> {
+  const out = await getExecOutputShiprig(["config", "show", "--json"], {
     cwd,
     ignoreReturnCode: true,
     silent: true,
   });
-  if (out.exitCode !== 0) return false;
-  const text = out.stdout.trim();
-  if (text.startsWith("no config yet")) return true;
+  if (out.exitCode !== 0) return "both";
   try {
-    const source = JSON.parse(stripJsonc(text))?.versioning?.source;
-    return source === undefined || source === "changesets";
+    const source = JSON.parse(out.stdout)?.versioning?.source;
+    return source === "changesets" || source === "commits" ? source : "both";
   } catch {
-    return false;
+    return "both";
   }
 }
 
