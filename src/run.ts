@@ -14,6 +14,7 @@ import type { GitHub } from "./github.ts";
 import type { Octokit } from "./octokit.ts";
 import { commentReleasedPrs as commentReleasedPrsOn } from "./releasedComments.ts";
 import {
+  atLeast,
   execShiprig,
   getExecOutputShiprig,
   listPackages,
@@ -369,6 +370,8 @@ type VersionOptions = {
   branch?: string;
   // A label on the version PR that freezes its branch, for hand edits.
   holdLabel?: string;
+  // Release packages at exact versions (`releaseAs` in shiprig-action.jsonc).
+  releaseAs?: Record<string, string>;
 };
 
 type RunVersionResult = {
@@ -389,7 +392,15 @@ export async function runVersion({
   branch = context.ref.replace("refs/heads/", ""),
   prDraft,
   holdLabel = "release:hold",
+  releaseAs,
 }: VersionOptions): Promise<RunVersionResult> {
+  // A custom version script decides versions itself; releaseAs can't reach it.
+  if (script && releaseAs && Object.keys(releaseAs).length > 0) {
+    throw new Error(
+      "`releaseAs` in shiprig-action.jsonc can't be combined with a custom version-script: " +
+        "the script runs its own version command. Pass `--release-as <package>=<version>` to shiprig in the script instead.",
+    );
+  }
   const { octokit } = github;
   let versionBranch = `changeset-release/${branch}`;
 
@@ -451,11 +462,9 @@ export async function runVersion({
 
   await github.prepareBranch(versionBranch);
 
+  const packagesBefore = await listPackages(cwd);
   const versionsBefore = new Map(
-    (await listPackages(cwd)).map((p) => [
-      `${p.ecosystem}:${p.dir}`,
-      p.version,
-    ]),
+    packagesBefore.map((p) => [`${p.ecosystem}:${p.dir}`, p.version]),
   );
 
   const env = { ...process.env, GITHUB_TOKEN: github.getToken() };
@@ -463,7 +472,11 @@ export async function runVersion({
   if (script) {
     await exec(script, undefined, { cwd, env });
   } else {
-    await execShiprig(["version", "--yes"], { cwd, env });
+    const args = ["version", "--yes"];
+    for (const spec of releaseAsArgs(releaseAs, packagesBefore, preState)) {
+      args.push("--release-as", spec);
+    }
+    await execShiprig(args, { cwd, env });
   }
 
   let changedPackages = (await listPackages(cwd)).filter(
@@ -694,4 +707,55 @@ export async function publishDecision({
       `Nothing to publish: this push isn't the merge of the version PR (${versionBranch}). ` +
       "To publish on every push, set publish-on: every-push; a workflow_dispatch run, if the workflow allows one, always publishes.",
   };
+}
+
+/**
+ * The `--release-as <package>=<version>` arguments for this version run:
+ * each `releaseAs` entry that still applies. One for a package that isn't
+ * releasing in this run, or that's already at or past the version, is
+ * skipped with a note, so an entry left in the config after its release
+ * doesn't fail every later push (release-please's release-as behaves the
+ * same). A prerelease sets its own version suffix, so nothing applies then.
+ */
+export function releaseAsArgs(
+  releaseAs: Record<string, string> | undefined,
+  packages: ShiprigPackage[],
+  preState: { tag: string } | undefined,
+): string[] {
+  const entries = Object.entries(releaseAs ?? {});
+  if (entries.length === 0) return [];
+  if (preState) {
+    core.info(
+      `releaseAs waits for a normal release: this is a prerelease (${preState.tag}).`,
+    );
+    return [];
+  }
+  const byName = new Map(packages.map((p) => [p.name, p]));
+  const args: string[] = [];
+  for (const [name, version] of entries) {
+    const pkg = byName.get(name);
+    if (!pkg) {
+      throw new Error(
+        `releaseAs names ${name}, which isn't a package in this workspace.`,
+      );
+    }
+    if (atLeast(pkg.version, version)) {
+      core.info(
+        `releaseAs: ${name} is already ${pkg.version}, at or past ${version}; nothing to do (remove the entry when you like).`,
+      );
+      continue;
+    }
+    const releasing =
+      pkg.bump !== undefined &&
+      pkg.bump !== "none" &&
+      pkg.nextVersion !== undefined;
+    if (!releasing) {
+      core.info(
+        `releaseAs: ${name} isn't releasing in this run; ${version} applies once a changeset or commit releases it.`,
+      );
+      continue;
+    }
+    args.push(`${name}=${version}`);
+  }
+  return args;
 }

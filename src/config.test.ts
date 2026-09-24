@@ -101,6 +101,36 @@ describe("parseConfig", () => {
   });
 });
 
+describe("releaseAs", () => {
+  it("reads a map of package names to versions", () => {
+    expect(
+      parseConfig(
+        JSON.stringify({
+          releaseAs: { "my-lib": "2.0.0", "@acme/app": "1.0.0-rc.1" },
+        }),
+        "f",
+      ).releaseAs,
+    ).toEqual({ "my-lib": "2.0.0", "@acme/app": "1.0.0-rc.1" });
+  });
+
+  it.each([
+    [["2.0.0"], "must be an object"],
+    ["2.0.0", "must be an object"],
+    [{ "my-lib": "2.0" }, "must be a semver version"],
+    [{ "my-lib": "v2.0.0" }, "must be a semver version"],
+    [{ "my-lib": 2 }, "must be a semver version"],
+    [{ " ": "2.0.0" }, "empty package name"],
+  ])("rejects %j", (value, message) => {
+    expect(() =>
+      parseConfig(JSON.stringify({ releaseAs: value }), "f"),
+    ).toThrow(message);
+  });
+
+  it("is file-only: no workflow input", () => {
+    expect(CONFIG_KEYS.releaseAs.input).toBeNull();
+  });
+});
+
 describe("findConfig", () => {
   it("is empty with no file", async () => {
     await using fixture = await gitdir({ "README.md": "" });
@@ -208,6 +238,9 @@ describe("schema/shiprig-action.json", () => {
     for (const [key, spec] of Object.entries(CONFIG_KEYS)) {
       if (Array.isArray(spec.type)) {
         expect(props[key].enum, key).toEqual(spec.type);
+      } else if (spec.type === "versions") {
+        // A map of package names to versions.
+        expect(props[key].type, key).toBe("object");
       } else {
         expect(props[key].type, key).toBe(spec.type);
         // A string the validator rejects as blank, the schema rejects too.
