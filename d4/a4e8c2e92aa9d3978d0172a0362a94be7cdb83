@@ -1,0 +1,21 @@
+docs/ROADMAP.md
+  s_505a2cfce9114c::t_a895f3a23efb3f 67-70,77,82-86,93-98,106-122,156
+README.md
+  s_505a2cfce9114c::t_dfcb61a22fa630 121-135,178-179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "d4a4e8c2e92aa9d3978d0172a0362a94be7cdb83",
+  "prompts": {},
+  "sessions": {
+    "s_505a2cfce9114c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26f83a80-3cb9-404d-829c-6b4925947f16",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
