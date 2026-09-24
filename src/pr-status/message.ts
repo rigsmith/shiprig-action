@@ -44,32 +44,29 @@ export async function getStatusMessage(
     templateContent,
   );
 
-  // Without a changeset of its own there's no plan to read: `status --since`
-  // is the CI gate, and fails when packages changed with no changeset.
-  if (own.length === 0) {
+  // In a changesets-only repository, a pull request with no changeset of its
+  // own has nothing to plan, and `status --since` (the CI gate there) fails
+  // when packages changed with none.
+  const changesetsOnly = await versionsFromChangesetsOnly(cwd);
+  if (own.length === 0 && changesetsOnly) {
     return getAbsentMessage(pr.sha, newChangesetUrl);
   }
 
-  // `status --since` limits changesets to the pull request's, not commits:
-  // with commits as a source, the plan also has the base branch's, and the
-  // preview would too, so it's left out.
-  const changesetsOnly = await versionsFromChangesetsOnly(cwd);
-  // The plan first: the preview then trims the checkout's changesets down to
-  // this pull request's own.
+  // `--since` scopes both to the pull request: its changesets and, with
+  // commits as a source, its commits.
   const releases = await readReleasePlan(cwd, { since: baseRef });
-  const preview = changesetsOnly ? await previewChangelog(cwd, own) : undefined;
+  if (own.length === 0 && !releases.some((r) => r.type !== "none")) {
+    return getAbsentMessage(pr.sha, newChangesetUrl);
+  }
+  const preview = await previewChangelog(cwd, baseRef);
   return getApproveMessage(
     pr.sha,
     newChangesetUrl,
     releases,
     own.length,
     preview,
-    changesetsOnly,
   );
 }
-
-const FROM_COMMITS_NOTE =
-  "> [!NOTE]\n> This repository also versions from conventional commits, so the plan includes releases from commits already on the base branch, and there's no changelog preview.";
 
 export function getApproveMessage(
   commitSha: string,
@@ -77,17 +74,18 @@ export function getApproveMessage(
   releases: PlannedRelease[],
   changesets: number,
   preview: string | undefined,
-  changesetsOnly = true,
 ) {
+  // A repository versioning from commits can release with no changeset.
+  const title = changesets > 0 ? "Changeset detected" : "Release detected";
   return `\
-### 🦋 Changeset detected
+### 🦋 ${title}
 
 Latest commit: ${commitSha}
 
 **The changes in this PR will be included in the next version bump.**
 
 ${getReleasePlanMessage(releases, changesets)}
-${changesetsOnly ? "" : `\n${FROM_COMMITS_NOTE}\n`}${getPreviewMessage(preview)}
+${getPreviewMessage(preview)}
 Not sure what this means? [Click here to learn what changesets are](https://changesets.dev/faq).
 
 [Click here if you're a maintainer who wants to add another changeset to this PR](${newChangesetUrl})`;
@@ -139,7 +137,10 @@ function getReleasePlanMessage(releases: PlannedRelease[], changesets: number) {
   ]);
 
   let summary = "This PR includes ";
-  if (changesets === 0) {
+  if (changesets === 0 && bumps.length > 0) {
+    // Released from its commits, with no changeset.
+    summary = `This PR's commits release ${bumps.length} package${bumps.length === 1 ? "" : "s"}`;
+  } else if (changesets === 0) {
     summary += "no changesets";
   } else {
     summary += `changesets to release ${bumps.length} package`;

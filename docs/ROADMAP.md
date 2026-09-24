@@ -70,8 +70,9 @@ version-pr-merge`, the default, publishes on the push that merges
 - **`pr-status` on shiprig, with a changelog preview** (unreleased). The PR
   status comment plans with `shiprig status --since <base>`, so it shows each
   package's new version in any ecosystem, and a collapsible preview of the
-  changelog entries the PR's own changesets add (`shiprig version
---changelog`). It no longer needs `@changesets/cli`.
+  changelog entries the PR adds (`shiprig version --changelog --since`). It
+  no longer needs `@changesets/cli`. With commits as a versioning source, the
+  plan and preview cover the PR's own commits too (shiprig 1.21.0).
 
 ## Next
 

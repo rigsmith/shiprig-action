@@ -46,12 +46,13 @@ action side in #7. Row 7 is phase 4.
 
 - **`pr-status` runs on shiprig**, ahead of the rest of phase 4, since it needs
   no pack step. The plan is `shiprig status --since <base>` (canon's
-  `status --since`: only the PR's changesets) and only runs when the PR adds
+  `status --since`: only the PR's changesets, and since shiprig 1.21.0 only its
+  commits too). In a changesets-only repository it only runs when the PR adds
   or edits a changeset, since that command is also the CI gate and fails on
-  changed packages with none. The changed packages for the "add a changeset"
-  link come from `shiprig packages list`, so any ecosystem works. The comment
-  adds a changelog preview: `shiprig version --changelog` in the throwaway
-  worktree, with every changeset but the PR's own removed first.
+  changed packages with none; with commits as a source, a PR can release from
+  its commits alone. The changed packages for the "add a changeset" link come
+  from `shiprig packages list`, so any ecosystem works. The comment adds a
+  changelog preview from `shiprig version --changelog --since <base>`.
 
 - **shiprig is required.** Custom `version-script`/`publish-script` still need it:
   shiprig's plan is what tells the action to open a version PR or publish. That's
