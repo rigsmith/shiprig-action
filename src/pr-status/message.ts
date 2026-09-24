@@ -4,7 +4,8 @@ import { type PlannedRelease, readReleasePlan } from "../shiprig.ts";
 import {
   previewChangelog,
   pullRequestChangesets,
-  versionsFromChangesetsOnly,
+  type VersioningSource,
+  versioningSource,
 } from "./preview.ts";
 import {
   getNewChangesetTemplateContent,
@@ -47,24 +48,29 @@ export async function getStatusMessage(
   // In a changesets-only repository, a pull request with no changeset of its
   // own has nothing to plan, and `status --since` (the CI gate there) fails
   // when packages changed with none.
-  const changesetsOnly = await versionsFromChangesetsOnly(cwd);
-  if (own.length === 0 && changesetsOnly) {
-    return getAbsentMessage(pr.sha, newChangesetUrl);
+  const source = await versioningSource(cwd);
+  if (source === "changesets" && own.length === 0) {
+    return getAbsentMessage(pr.sha, newChangesetUrl, source);
   }
 
   // `--since` scopes both to the pull request: its changesets and, with
   // commits as a source, its commits.
   const releases = await readReleasePlan(cwd, { since: baseRef });
-  if (own.length === 0 && !releases.some((r) => r.type !== "none")) {
-    return getAbsentMessage(pr.sha, newChangesetUrl);
+  const releasing = releases.some((r) => r.type !== "none");
+  // With commits alone as the source, a changeset carries no release intent:
+  // only the plan decides. Otherwise the PR's own changesets count too, an
+  // empty one included, as canon counts them.
+  if (!releasing && (source === "commits" || own.length === 0)) {
+    return getAbsentMessage(pr.sha, newChangesetUrl, source);
   }
   const preview = await previewChangelog(cwd, baseRef);
   return getApproveMessage(
     pr.sha,
     newChangesetUrl,
     releases,
-    own.length,
+    source === "commits" ? 0 : own.length,
     preview,
+    source,
   );
 }
 
@@ -74,9 +80,16 @@ export function getApproveMessage(
   releases: PlannedRelease[],
   changesets: number,
   preview: string | undefined,
+  source: VersioningSource = "changesets",
 ) {
   // A repository versioning from commits can release with no changeset.
   const title = changesets > 0 ? "Changeset detected" : "Release detected";
+  const footer =
+    source === "commits"
+      ? "Releases here come from the PR's conventional commits (`feat:`, `fix:`, `!` for breaking)."
+      : `Not sure what this means? [Click here to learn what changesets are](https://changesets.dev/faq).
+
+[Click here if you're a maintainer who wants to add another changeset to this PR](${newChangesetUrl})`;
   return `\
 ### 🦋 ${title}
 
@@ -84,22 +97,36 @@ Latest commit: ${commitSha}
 
 **The changes in this PR will be included in the next version bump.**
 
-${getReleasePlanMessage(releases, changesets)}
+${getReleasePlanMessage(releases, changesets, source)}
 ${getPreviewMessage(preview)}
-Not sure what this means? [Click here to learn what changesets are](https://changesets.dev/faq).
-
-[Click here if you're a maintainer who wants to add another changeset to this PR](${newChangesetUrl})`;
+${footer}`;
 }
 
-export function getAbsentMessage(commitSha: string, newChangesetUrl: string) {
+export function getAbsentMessage(
+  commitSha: string,
+  newChangesetUrl: string,
+  source: VersioningSource = "changesets",
+) {
+  if (source === "commits") {
+    return `\
+### ⚠️ No release found
+
+Latest commit: ${commitSha}
+
+Merging this PR will not cause a version bump for any packages. If these changes should not result in a new version, you're good to go. **Releases here come from conventional commits: if these changes should result in a version bump, give a commit a releasing type** (\`feat:\`, \`fix:\`, \`!\` for breaking).`;
+  }
+  const how =
+    source === "both"
+      ? "you need to add a changeset, or give a commit a releasing conventional type (`feat:`, `fix:`, `!` for breaking)"
+      : "you need to add a changeset";
   return `\
 ### ⚠️ No Changeset found
 
 Latest commit: ${commitSha}
 
-Merging this PR will not cause a version bump for any packages. If these changes should not result in a new version, you're good to go. **If these changes should result in a version bump, you need to add a changeset.**
+Merging this PR will not cause a version bump for any packages. If these changes should not result in a new version, you're good to go. **If these changes should result in a version bump, ${how}.**
 
-${getReleasePlanMessage([], 0)}
+${getReleasePlanMessage([], 0, source)}
 
 [Click here to learn what changesets are, and how to add one](https://changesets.dev/faq).
 
@@ -112,7 +139,7 @@ function getPreviewMessage(preview: string | undefined): string {
 <details>
 <summary>Changelog preview</summary>
 
-What this PR's changesets add to the changelogs:
+What this PR adds to the changelogs:
 
 ${preview}
 
@@ -120,7 +147,11 @@ ${preview}
 `;
 }
 
-function getReleasePlanMessage(releases: PlannedRelease[], changesets: number) {
+function getReleasePlanMessage(
+  releases: PlannedRelease[],
+  changesets: number,
+  source: VersioningSource,
+) {
   const bumps = releases.filter((r) => r.type !== "none");
   const table = markdownTable([
     ["Name", "Type", "Version"],
@@ -136,10 +167,14 @@ function getReleasePlanMessage(releases: PlannedRelease[], changesets: number) {
     ]),
   ]);
 
+  const packages = `${bumps.length} package${bumps.length === 1 ? "" : "s"}`;
   let summary = "This PR includes ";
-  if (changesets === 0 && bumps.length > 0) {
+  if (source === "both" && bumps.length > 0) {
+    // Changesets and commits can both release here; don't credit either.
+    summary = `This PR releases ${packages}`;
+  } else if (changesets === 0 && bumps.length > 0) {
     // Released from its commits, with no changeset.
-    summary = `This PR's commits release ${bumps.length} package${bumps.length === 1 ? "" : "s"}`;
+    summary = `This PR's commits release ${packages}`;
   } else if (changesets === 0) {
     summary += "no changesets";
   } else {

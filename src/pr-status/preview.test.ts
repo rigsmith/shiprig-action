@@ -14,7 +14,7 @@ import {
   changedPackages,
   changelogMarkdown,
   previewChangelog,
-  versionsFromChangesetsOnly,
+  versioningSource,
 } from "./preview.ts";
 
 afterEach(() => {
@@ -201,9 +201,11 @@ describe("a repository that also versions from commits", () => {
     await git(cwd, "add", "-A");
     await git(cwd, "commit", "-q", "-m", "a changeset for b");
 
-    expect(await versionsFromChangesetsOnly(cwd)).toBe(false);
+    expect(await versioningSource(cwd)).toBe("both");
     const md = await getStatusMessage(cwd, "main", aPullRequest);
     expect(md).toContain("Changeset detected");
+    // Changesets and commits can both release here: neither is credited.
+    expect(md).toContain("This PR releases 1 package");
     expect(md).toMatch(/\| pkg-b +\| Minor +\| 1\.1\.0 +\|/);
     expect(md).toContain("<summary>Changelog preview</summary>");
     expect(md).toContain("The PR adds a feature");
@@ -244,21 +246,58 @@ describe("a repository that also versions from commits", () => {
     await git(cwd, "commit", "-qam", "tidy b");
 
     const md = await getStatusMessage(cwd, "main", aPullRequest);
+    // Commits are the only source: the guidance is a releasing commit, and a
+    // changeset link would lead nowhere.
+    expect(md).toContain("No release found");
+    expect(md).toContain("`feat:`");
+    expect(md).not.toContain("add a changeset");
+  });
+
+  // With commits alone as the source, a changeset releases nothing.
+  it("doesn't count a changeset when commits are the only source", async () => {
+    await using fixture = await commitsRepo("commits");
+    const cwd = fixture.path;
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    await fs.writeFile(
+      path.join(cwd, ".changeset/pr-one.md"),
+      '---\n"pkg-b": minor\n---\n\nThe PR adds a feature\n',
+    );
+    await git(cwd, "add", "-A");
+    await git(cwd, "commit", "-q", "-m", "a changeset, no releasing commit");
+
+    const md = await getStatusMessage(cwd, "main", aPullRequest);
+    expect(md).toContain("No release found");
+    expect(md).not.toContain("Changeset detected");
+  });
+
+  it("offers either route when both sources release nothing", async () => {
+    await using fixture = await commitsRepo("both");
+    const cwd = fixture.path;
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    await fs.writeFile(
+      path.join(cwd, "packages/b/index.js"),
+      "export const z = 3;\n",
+    );
+    await git(cwd, "commit", "-qam", "tidy b");
+
+    const md = await getStatusMessage(cwd, "main", aPullRequest);
     expect(md).toContain("No Changeset found");
+    expect(md).toContain("add a changeset, or give a commit a releasing");
   });
 
   it.each([
-    ["{}", true],
-    ['{ "versioning": { "source": "changesets" } }', true],
-    ['// a comment\n{ "versioning": { "source": "commits" } }', false],
-    ["{ not json", false],
+    ["{}", "changesets"],
+    ['{ "versioning": { "source": "changesets" } }', "changesets"],
+    ['// a comment\n{ "versioning": { "source": "commits" } }', "commits"],
+    ['{ "versioning": { "source": "both" } }', "both"],
+    ["{ not json", "both"],
   ])("reads the source from %s", async (config, expected) => {
     await using fixture = await pullRequestRepo();
     await fs.writeFile(
       path.join(fixture.path, ".changeset/config.json"),
       config,
     );
-    expect(await versionsFromChangesetsOnly(fixture.path)).toBe(expected);
+    expect(await versioningSource(fixture.path)).toBe(expected);
   });
 });
 

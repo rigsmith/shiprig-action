@@ -2,7 +2,7 @@
 
 This action generates the changesets status in PRs: whether the PR has changeset files, which packages they release and at what version, and a **changelog preview** of the entries the PR's own changesets add.
 
-It runs on shiprig, so it covers every ecosystem shiprig supports, not only npm. The plan comes from `shiprig status --since <base>` and the preview from `shiprig version --changelog --since <base>`, both limited to what the PR adds: its changesets and, when the repository also versions from conventional commits (`versioning.source` of `commits` or `both`), its commits. Changesets and commits already on the base branch stay out of both. A PR in such a repository that releases from its commits alone gets a "Release detected" comment with the plan and preview.
+It runs on shiprig, so it covers every ecosystem shiprig supports, not only npm. The plan comes from `shiprig status --since <base>` and the preview from `shiprig version --changelog --since <base>`, both limited to what the PR adds: its changesets and, when the repository also versions from conventional commits (`versioning.source` of `commits` or `both`), its commits. Changesets and commits already on the base branch stay out of both. A PR in such a repository that releases from its commits alone gets a "Release detected" comment with the plan and preview. With commits as the only source, a changeset carries no release intent, so the comment goes by the plan alone, and a PR that releases nothing is pointed at a releasing conventional commit (`feat:`, `fix:`) rather than a changeset.
 
 It requires the repo to be checked out, and will automatically fetch the PR head ref into a temporary detached worktree in order to infer the changed files and packages.
 

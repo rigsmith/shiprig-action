@@ -94,25 +94,27 @@ export async function previewChangelog(
   return changelogMarkdown(out.stdout);
 }
 
+/** Where a repository's releases come from: `versioning.source`. */
+export type VersioningSource = "changesets" | "commits" | "both";
+
 /**
- * Whether the repository versions from changesets alone, as `shiprig config
- * show --json` reports it (the config shiprig resolved, defaults applied, so
+ * The repository's versioning source, as `shiprig config show --json`
+ * reports it (the config shiprig resolved, defaults applied, so
  * `versioning.source` is always there). One that can't be read counts as
- * not.
+ * "both", the source whose comment asks the plan either way.
  */
-export async function versionsFromChangesetsOnly(
-  cwd: string,
-): Promise<boolean> {
+export async function versioningSource(cwd: string): Promise<VersioningSource> {
   const out = await getExecOutputShiprig(["config", "show", "--json"], {
     cwd,
     ignoreReturnCode: true,
     silent: true,
   });
-  if (out.exitCode !== 0) return false;
+  if (out.exitCode !== 0) return "both";
   try {
-    return JSON.parse(out.stdout)?.versioning?.source === "changesets";
+    const source = JSON.parse(out.stdout)?.versioning?.source;
+    return source === "changesets" || source === "commits" ? source : "both";
   } catch {
-    return false;
+    return "both";
   }
 }
 
