@@ -1,0 +1,32 @@
+src/select-mode/mode.ts
+  s_505a2cfce9114c::t_a8f63279620647 1-15,17-48,52-53,56-89
+src/run.ts
+  s_505a2cfce9114c::t_1ae11c0bfe693e 198-200,202,204
+src/pack/index.ts
+  s_505a2cfce9114c::t_28f564be1acd8d 6-7,16,57-60
+src/publish/index.ts
+  s_505a2cfce9114c::t_28f564be1acd8d 1-2,8-12,27-29,31-33,56-65,68
+src/run.test.ts
+  s_505a2cfce9114c::t_75150efadc3ae7 1026-1097
+src/select-mode/mode.test.ts
+  s_505a2cfce9114c::t_75150efadc3ae7 1-6,8-10,12-21,23-26,28-29,32-34,36-38,40-43,45-56,58-71
+src/select-mode/index.ts
+  s_505a2cfce9114c::t_a8f63279620647 4,6
+  s_505a2cfce9114c::t_498fb4762d93fe 5,15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "17595cb500f205248fbcbd824c07f9568781b71d",
+  "prompts": {},
+  "sessions": {
+    "s_505a2cfce9114c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26f83a80-3cb9-404d-829c-6b4925947f16",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "John Campion Jr <john@brightshore.io>"
+    }
+  }
+}
