@@ -1025,8 +1025,18 @@ describe("polyglot", () => {
 });
 
 describe("publish from a pack directory", () => {
+  // Directories made beside the fixture (inside it, discovery would see the
+  // staged package.json as a second pkg-a), removed after each test.
+  const made: string[] = [];
+  afterEach(async () => {
+    for (const dir of made.splice(0)) {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
   async function packDir(cwd: string, plan: unknown[]) {
     const dir = path.join(cwd, "..", `pack-${path.basename(cwd)}`);
+    made.push(dir);
     await fs.mkdir(path.join(dir, "packages"), { recursive: true });
     await fs.writeFile(
       path.join(dir, "publish-plan.json"),
@@ -1072,6 +1082,7 @@ describe("publish from a pack directory", () => {
 
     // A real npm tarball, recorded as pack would record it.
     const staging = path.join(cwd, "..", `stage-${path.basename(cwd)}`);
+    made.push(staging);
     await fs.mkdir(path.join(staging, "package"), { recursive: true });
     await fs.writeFile(
       path.join(staging, "package", "package.json"),
