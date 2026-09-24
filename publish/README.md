@@ -2,7 +2,7 @@
 
 This action publishes packages with shiprig (by default `shiprig publish --yes`), then pushes the git tags it reports and creates their GitHub releases.
 
-Publishing from a pack directory isn't supported yet: shiprig has no `publish --from-pack-dir`, so `pack-dir-artifact-id` is rejected before anything is downloaded, whether or not a custom `script` is given.
+With `pack-dir-artifact-id`, it downloads the directory [pack](../pack/README.md) built and runs `shiprig publish --from-pack-dir`: exactly those files are published, in dependency order and under their npm dist-tag, building nothing, and each must still match the sha256 pack recorded. A custom `script` isn't given the directory, so the two can't be combined.
 
 ## Requirements
 
@@ -23,14 +23,14 @@ Publishing from a pack directory isn't supported yet: shiprig has no `publish --
 
 <!-- api-start -->
 
-| Inputs                   | Description                                                                                                                                                                                             |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `github-token`           | The GitHub token to use for authentication. Defaults to the GitHub-provided token. To use a custom token, pass it explicitly to this input.                                                             |
-| `script`                 | The command to use to publish packages                                                                                                                                                                  |
-| `pack-dir-artifact-id`   | Not supported yet: shiprig can't publish from a pack directory, so setting this fails the step before anything is downloaded. Publish with the built-in `shiprig publish` or a custom `script` instead. |
-| `create-github-releases` | Whether to create Github releases after publish                                                                                                                                                         |
-| `push-git-tags`          | Whether to create git tags after publish. If `create-github-releases` is set to `true`, this option will also always be `true`.                                                                         |
-| `cwd`                    | The working directory to run shiprig (or the custom script) in. Defaults to the root of the repository.                                                                                                 |
+| Inputs                   | Description                                                                                                                                                      |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `github-token`           | The GitHub token to use for authentication. Defaults to the GitHub-provided token. To use a custom token, pass it explicitly to this input.                      |
+| `script`                 | The command to use to publish packages                                                                                                                           |
+| `pack-dir-artifact-id`   | The artifact id [pack](../pack/README.md) output: publish those files with `shiprig publish --from-pack-dir`, building nothing. Can't be combined with `script`. |
+| `create-github-releases` | Whether to create Github releases after publish                                                                                                                  |
+| `push-git-tags`          | Whether to create git tags after publish. If `create-github-releases` is set to `true`, this option will also always be `true`.                                  |
+| `cwd`                    | The working directory to run shiprig (or the custom script) in. Defaults to the root of the repository.                                                          |
 
 | Outputs              | Description                                                                                                                                                                                                                                         |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

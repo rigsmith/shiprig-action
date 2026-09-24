@@ -1,19 +1,14 @@
 # rigsmith/shiprig-action/select-mode
 
-> [!WARNING]
-> **Not ported to shiprig yet.** This sub-action still runs the Changesets CLI,
-> so it needs `@changesets/cli` installed and only understands npm packages.
-> Porting it is phase 4 in [docs/DESIGN.md](../docs/DESIGN.md). The
-> [root action](../README.md) covers the same flow on shiprig in one job.
+This action selects the mode to run a release workflow, on shiprig:
 
-This action selects the mode to run a Changesets workflow:
-
-- `"version"`: Changesets are found. The workflow should version packages and create a pull request with the changes.
-- `"publish"`: No changesets are found and they are publishable packages. The workflow should publish them.
-- `"none"`: No changesets are found and there are no publishable packages. The workflow should do nothing.
+- `"version"`: a release is pending (from changesets, or from conventional commits when the repository versions from them). The workflow should version packages and create a pull request with the changes.
+- `"publish"`: nothing is pending, and `shiprig publish-plan` lists packages whose version isn't on its registry yet, or whose git tag is missing. The workflow should publish them. The plan is uploaded as an artifact (`publish-plan-artifact-id`) for [pack](../pack/README.md).
+- `"none"`: nothing to version or publish, including changesets that release nothing (empty, or naming only ignored packages). The workflow should do nothing.
 
 ## Requirements
 
+- Needs repo checked out (with its tags, for the publish plan) and **shiprig ≥ 1.21.0** on `PATH` (or at `$SHIPRIG_BIN`); checked before anything runs
 - [Job permissions][job-permissions]: _none_
 - [Workflow triggers][workflow-triggers]: _any_
 

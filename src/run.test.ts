@@ -1023,6 +1023,78 @@ describe("polyglot", () => {
   });
 });
 
+describe("publish from a pack directory", () => {
+  async function packDir(cwd: string, plan: unknown[]) {
+    const dir = path.join(cwd, "..", `pack-${path.basename(cwd)}`);
+    await fs.mkdir(path.join(dir, "packages"), { recursive: true });
+    await fs.writeFile(
+      path.join(dir, "publish-plan.json"),
+      JSON.stringify({ version: 1, plan }),
+    );
+    return dir;
+  }
+
+  // An empty pack plan publishes nothing and reaches no registry; the tags
+  // still go out, as shiprig publish tags the release either way.
+  it("runs shiprig publish --from-pack-dir", async () => {
+    await using fixture = await createPolyglotFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+
+    const result = await runPublish({
+      fromPackDir: await packDir(cwd, []),
+      github: createGithub(cwd),
+      createGithubReleases: false,
+      pushGitTags: false,
+      cwd,
+    });
+    expect(result).toMatchObject({
+      published: true,
+      publishedPackages: expect.arrayContaining([
+        { name: "pkg-a", version: "1.0.0" },
+      ]),
+      exitCode: 0,
+    });
+  });
+
+  // A file that no longer matches what pack recorded: shiprig refuses before
+  // pushing, which it only does when it was given the pack directory.
+  it("fails when a packed file was changed", async () => {
+    await using fixture = await createPolyglotFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    const dir = await packDir(cwd, [
+      [
+        {
+          kind: "publish",
+          name: "pkg-a",
+          version: "1.0.0",
+          tarball: {
+            path: "packages/pkg-a-1.0.0.tgz",
+            integrity: "sha256-AAAA",
+          },
+        },
+      ],
+    ]);
+    await fs.writeFile(
+      path.join(dir, "packages", "pkg-a-1.0.0.tgz"),
+      "swapped",
+    );
+
+    const result = await runPublish({
+      fromPackDir: dir,
+      github: createGithub(cwd),
+      createGithubReleases: false,
+      pushGitTags: false,
+      cwd,
+    });
+    expect(result.exitCode).not.toBe(0);
+    expect(result.published).toBe(false);
+  });
+});
+
 describe("publish comments on the released pull requests", () => {
   it.each([true, false])(
     "looks at the release commit only when commentReleasedPrs is %s",
