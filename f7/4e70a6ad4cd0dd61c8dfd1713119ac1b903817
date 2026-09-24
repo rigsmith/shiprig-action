@@ -1,0 +1,67 @@
+publish/README.md
+  s_505a2cfce9114c::t_e30e1eb36d287e 26-34
+src/shiprig.ts
+  s_505a2cfce9114c::t_d2149c182e83d6 255-262
+action.yml
+  s_505a2cfce9114c::t_d7fa57d95f2769 31-37,93-95
+src/github.ts
+  s_505a2cfce9114c::t_d2149c182e83d6 283-286,298-305
+src/index.ts
+  s_505a2cfce9114c::t_d7fa57d95f2769 172-186,191,199-201,203
+src/run.test.ts
+  s_505a2cfce9114c::t_0c3e88950256c1 1,442,485,549-553,582-586,985,1316-1322,1359,1395-1397,1442-1447,1453-1454
+  s_505a2cfce9114c::t_536aa63cbbac10 14,50,1315,1323-1325,1327-1355,1357-1358,1360-1387,1393-1394,1413,1424,1430,1455-1468
+  s_505a2cfce9114c::t_b2cb39c812b5a3 1326,1356
+  s_505a2cfce9114c::t_c59e88c94e4baf 518-521,1398-1412,1414-1423,1425-1429,1431-1441,1448-1452
+  s_505a2cfce9114c::t_9b712576882e03 1388-1392
+src/github.test.ts
+  s_505a2cfce9114c::t_6aed03c07e4d43 326-336,343-348
+schema/shiprig-action.json
+  s_505a2cfce9114c::t_5975b6fffd63df 61-64
+src/summary.test.ts
+  s_505a2cfce9114c::t_6aed03c07e4d43 37-62
+README.md
+  s_505a2cfce9114c::t_e30e1eb36d287e 332-348,355-356
+  s_505a2cfce9114c::t_327a73e617ceac 136-149,290-293
+.changeset/separate-pull-requests.md
+  s_505a2cfce9114c::t_327a73e617ceac 1-5
+version/README.md
+  s_505a2cfce9114c::t_e30e1eb36d287e 25-41
+src/config.ts
+  s_505a2cfce9114c::t_d7fa57d95f2769 28,45
+src/summary.ts
+  s_505a2cfce9114c::t_d7fa57d95f2769 31,35,37-38,41-51,55,57-60
+src/shiprig.test.ts
+  s_505a2cfce9114c::t_ea225078b6a2ca 51
+src/run.ts
+  s_505a2cfce9114c::t_c60096d768b178 23
+  s_505a2cfce9114c::t_b2cb39c812b5a3 467-471,541-543
+  s_505a2cfce9114c::t_b421690f55520c 376-377,381-382,384-386,391-456,459-466,472-482,485-529,532-540,544-548,560-565,637-651
+  s_505a2cfce9114c::t_d7fa57d95f2769 457-458,483-484,530-531
+src/pr-status/worktree.test.ts
+  s_505a2cfce9114c::t_b9c9724fea93d5 123
+src/pr-status/preview.test.ts
+  s_505a2cfce9114c::t_7fb7fc9c3968df 70-72
+version/action.yml
+  s_505a2cfce9114c::t_d7fa57d95f2769 27-33,58-60
+docs/ROADMAP.md
+  s_505a2cfce9114c::t_327a73e617ceac 90,93-106,168
+src/version/index.ts
+  s_505a2cfce9114c::t_d7fa57d95f2769 44,56-57,60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "f74e70a6ad4cd0dd61c8dfd1713119ac1b903817",
+  "prompts": {},
+  "sessions": {
+    "s_505a2cfce9114c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26f83a80-3cb9-404d-829c-6b4925947f16",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "John Campion Jr <john@brightshore.io>"
+    }
+  }
+}
