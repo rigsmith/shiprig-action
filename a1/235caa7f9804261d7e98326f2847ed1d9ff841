@@ -1,0 +1,23 @@
+src/pr-status/preview.test.ts
+  s_505a2cfce9114c::t_d79d21b1f21916 17,204,207-208,248-282,285,289-293,300
+src/pr-status/message.ts
+  s_505a2cfce9114c::t_bbb4bf95e53b47 7-8,51-53,59-64,71,73,83,87-92,100,102,105-121,127,129,142,150-154,170,172-175,177
+src/pr-status/preview.ts
+  s_505a2cfce9114c::t_bbb4bf95e53b47 97-99,101-102,104,106,112,114-115,117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "a1235caa7f9804261d7e98326f2847ed1d9ff841",
+  "prompts": {},
+  "sessions": {
+    "s_505a2cfce9114c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26f83a80-3cb9-404d-829c-6b4925947f16",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "John Campion Jr <john@brightshore.io>"
+    }
+  }
+}
