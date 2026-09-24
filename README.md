@@ -20,8 +20,10 @@ release from conventional commits instead of, or as well as, changeset files.
 
 ## Requirements
 
-- **shiprig ≥ 1.20.0** on `PATH` in the job (or at `$SHIPRIG_BIN`). The action
-  doesn't install it; see [Installing shiprig](#installing-shiprig).
+- **shiprig ≥ 1.21.0** on `PATH` in the job (or at `$SHIPRIG_BIN`). The action
+  doesn't install it; see [Installing shiprig](#installing-shiprig). It checks
+  the version before doing anything, and an older shiprig fails with the
+  minimum named.
 - The repository checked out with enough history for shiprig to find its last
   release tags (`fetch-depth: 0` is simplest).
 - [Job permissions][job-permissions]:
@@ -64,7 +66,7 @@ jobs:
           node-version: 22
 
       - name: Install shiprig
-        run: npm install -g @rigsmith/shiprig@1.20.3
+        run: npm install -g @rigsmith/shiprig@1.21.0
 
       - uses: rigsmith/shiprig-action@v0
         with:
@@ -231,14 +233,14 @@ runs the shiprig it was tested with.
 - **npm** (any runner with Node; published with provenance):
 
   ```yaml
-  - run: npm install -g @rigsmith/shiprig@1.20.3
+  - run: npm install -g @rigsmith/shiprig@1.21.0
   ```
 
 - **The install script** (Linux and macOS runners):
 
   ```yaml
   - run: |
-      curl -fsSL https://rigsmith.sh | RIGSMITH_VERSION=v1.20.3 sh -s shiprig
+      curl -fsSL https://rigsmith.sh | RIGSMITH_VERSION=v1.21.0 sh -s shiprig
       echo "$HOME/.local/bin" >> "$GITHUB_PATH"
   ```
 

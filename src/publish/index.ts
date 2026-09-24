@@ -2,6 +2,7 @@ import * as core from "@actions/core";
 import { loadConfig, resolveSetting } from "../config.ts";
 import { GitHub } from "../github.ts";
 import { runPublish } from "../run.ts";
+import { requireShiprig } from "../shiprig.ts";
 import { getOptionalInput, getRequiredInput } from "../utils.ts";
 
 try {
@@ -11,6 +12,7 @@ try {
 }
 
 async function main() {
+  await requireShiprig();
   const cwd = getOptionalInput("cwd") || process.cwd();
 
   const githubToken = getRequiredInput("github-token");

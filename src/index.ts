@@ -3,7 +3,11 @@ import { context } from "@actions/github";
 import { loadConfig, resolveSetting } from "./config.ts";
 import { GitHub } from "./github.ts";
 import { publishDecision, runPublish, runVersion } from "./run.ts";
-import { hasChangesetFiles, readReleasePlan } from "./shiprig.ts";
+import {
+  hasChangesetFiles,
+  readReleasePlan,
+  requireShiprig,
+} from "./shiprig.ts";
 import {
   planSummary,
   publishedSummary,
@@ -30,6 +34,7 @@ try {
 }
 
 async function main() {
+  await requireShiprig();
   const cwd = getOptionalInput("cwd") || process.cwd();
 
   throwOnRenamedInputs({

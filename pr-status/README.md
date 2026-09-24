@@ -11,7 +11,7 @@ It requires the repo to be checked out, and will automatically fetch the PR head
 ## Requirements
 
 - Needs repo checked out
-- **shiprig ≥ 1.20.0** on `PATH` (or at `$SHIPRIG_BIN`), as for the [root action](../README.md#installing-shiprig)
+- **shiprig ≥ 1.21.0** on `PATH` (or at `$SHIPRIG_BIN`), as for the [root action](../README.md#installing-shiprig); checked before anything runs
 - [Job permissions][job-permissions]: _none_
 - [Workflow triggers][workflow-triggers]:
   - [`pull_request`][trigger-pull-request]

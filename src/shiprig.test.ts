@@ -2,11 +2,15 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  atLeast,
   hasChangesetFiles,
   listPackages,
   readChangelog,
   readPreState,
   readReleasePlan,
+  requireShiprig,
+  resetShiprigCheck,
+  versionCheck,
   type ShiprigPackage,
 } from "./shiprig.ts";
 import { gitdir } from "./test-utils.ts";
@@ -240,4 +244,97 @@ describe("hasChangesetFiles and prerelease", () => {
     });
     expect(await hasChangesetFiles(fixture.path)).toBe(false);
   });
+});
+
+describe("the shiprig version", () => {
+  afterEach(() => resetShiprigCheck());
+
+  it("compares versions as semver orders them", () => {
+    expect(atLeast("1.21.0", "1.21.0")).toBe(true);
+    expect(atLeast("1.21.3", "1.21.0")).toBe(true);
+    expect(atLeast("2.0.0", "1.21.0")).toBe(true);
+    expect(atLeast("1.20.9", "1.21.0")).toBe(false);
+    expect(atLeast("1.21.0-rc.1", "1.21.0")).toBe(false);
+    expect(atLeast("1.21.1-rc.1", "1.21.0")).toBe(true);
+    expect(atLeast("1.9.0", "1.21.0")).toBe(false); // numbers, not strings
+  });
+
+  it("isn't a version when it's a banner, or not strictly semver", () => {
+    expect(atLeast("  ╭─╴ ╶─╮ shipRig v1.20.3", "1.21.0")).toBe(false);
+    expect(atLeast("01.21.0", "1.21.0")).toBe(false);
+    expect(atLeast("1.21.0+", "1.21.0")).toBe(false);
+    expect(atLeast("1.21.0-", "1.21.0")).toBe(false);
+    expect(atLeast("1.21.0-01", "1.20.0")).toBe(false);
+    expect(atLeast("1.21.0+build.5", "1.21.0")).toBe(true);
+  });
+
+  it("accepts the pinned shiprig", async () => {
+    await expect(requireShiprig()).resolves.toBeUndefined();
+  });
+
+  // A script standing in for shiprig prints what the given release would,
+  // then runs body (an exit, a sleep).
+  async function fakeShiprig(dir: string, stdout: string, body = "") {
+    const bin = path.join(dir, "shiprig");
+    await fs.writeFile(
+      bin,
+      `#!/bin/sh\nprintf '%s\\n' '${stdout}'\n${body}\n`,
+      { mode: 0o755 },
+    );
+    vi.stubEnv("SHIPRIG_BIN", bin);
+  }
+
+  it.skipIf(process.platform === "win32")(
+    "refuses an older shiprig, banner or version",
+    async () => {
+      await using fixture = await workspace();
+      await fakeShiprig(fixture.path, "  shipRig  v1.20.3 (abc1234)");
+      await expect(requireShiprig()).rejects.toThrow(
+        /needs shiprig 1\.21\.0 or later.*isn't a bare version/,
+      );
+      resetShiprigCheck();
+      await fakeShiprig(fixture.path, "1.20.3");
+      await expect(requireShiprig()).rejects.toThrow(/found shiprig 1\.20\.3/);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "refuses a source build whose --version failed",
+    async () => {
+      await using fixture = await workspace();
+      await fakeShiprig(fixture.path, "source build · x", "exit 1");
+      await expect(requireShiprig()).rejects.toThrow(
+        /Running `shiprig --version`/,
+      );
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "gives up on a shiprig that hangs",
+    async () => {
+      await using fixture = await workspace();
+      await fakeShiprig(fixture.path, "1.21.0", "sleep 5");
+      const was = versionCheck.timeoutMs;
+      versionCheck.timeoutMs = 200;
+      try {
+        await expect(requireShiprig()).rejects.toThrow(
+          /Running `shiprig --version`/,
+        );
+      } finally {
+        versionCheck.timeoutMs = was;
+      }
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "lets a source build through",
+    async () => {
+      await using fixture = await workspace();
+      await fakeShiprig(
+        fixture.path,
+        "source build · 2026-09-24 · /src/rigsmith",
+      );
+      await expect(requireShiprig()).resolves.toBeUndefined();
+    },
+  );
 });
