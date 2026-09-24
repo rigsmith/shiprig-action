@@ -105,6 +105,7 @@ async function runGitHttpBackend(
   cwd: string,
   request: IncomingMessage,
   response: ServerResponse,
+  record: RecordedRequest,
 ) {
   // `git http-backend` speaks CGI: request metadata goes through environment
   // variables, the request body through stdin, and the response through stdout.
@@ -127,6 +128,12 @@ async function runGitHttpBackend(
   if (request.headers["content-type"] !== undefined) {
     env.CONTENT_TYPE = request.headers["content-type"];
   }
+  record.cgi = {
+    PATH_INFO: env.PATH_INFO,
+    QUERY_STRING: env.QUERY_STRING,
+    CONTENT_TYPE: env.CONTENT_TYPE,
+    GIT_PROJECT_ROOT: env.GIT_PROJECT_ROOT,
+  };
 
   const backend = spawn("git", ["http-backend"], {
     env,
@@ -145,6 +152,8 @@ async function runGitHttpBackend(
     backend.on("error", reject);
     backend.on("close", resolve);
   });
+  record.exitCode = exitCode;
+  record.stderr = Buffer.concat(stderr).toString("utf8");
   if (exitCode !== 0) {
     throw new Error(
       `git http-backend exited with ${exitCode}: ${Buffer.concat(stderr).toString("utf8")}`,
@@ -179,6 +188,7 @@ async function runGitHttpBackend(
     }
   }
 
+  record.status = status;
   response.writeHead(status);
   response.end(output.subarray(headerEnd + separator.length));
 }
@@ -189,7 +199,11 @@ async function listen(server: http.Server) {
   server.on("listening", waiter.resolve);
   server.on("error", waiter.reject);
 
-  server.listen(0);
+  // Bind the loopback address the remote URL names, not the default `::`.
+  // macOS hands a `::` socket a port that another process already holds on
+  // 127.0.0.1, and connections to 127.0.0.1 then reach that process instead:
+  // Logitech Options+ answers git with a 501 from exactly such ports.
+  server.listen(0, "127.0.0.1");
 
   try {
     await waiter.promise;
@@ -204,6 +218,13 @@ type RecordedRequest = {
   method: string;
   url: string;
   headers: NodeJS.Dict<string[]>;
+  // What the request became on the CGI side, so a failed push can say which
+  // request went wrong and what `git http-backend` made of it.
+  cgi?: NodeJS.Dict<string>;
+  exitCode?: number | null;
+  status?: number;
+  stderr?: string;
+  error?: string;
 };
 
 function recordRequest(request: IncomingMessage): RecordedRequest {
@@ -220,13 +241,16 @@ async function createGitHttpServer(cwd: string) {
     const recordedRequest = recordRequest(request);
     requests.push(recordedRequest);
 
-    void runGitHttpBackend(cwd, request, response).catch((error: unknown) => {
-      response.destroy(
-        Error.isError(error)
-          ? error
-          : new Error("Server error", { cause: error }),
-      );
-    });
+    void runGitHttpBackend(cwd, request, response, recordedRequest).catch(
+      (error: unknown) => {
+        recordedRequest.error = String(error);
+        response.destroy(
+          Error.isError(error)
+            ? error
+            : new Error("Server error", { cause: error }),
+        );
+      },
+    );
   });
 
   await listen(server);
@@ -290,4 +314,29 @@ export async function createGitHttpRemote(files: Fixture) {
     url: `${server.origin}/${path.basename(fixture.path)}`,
     requests: server.requests,
   });
+}
+
+// Renders what each Git HTTP remote saw, for a failure message: a push that
+// fails against these remotes otherwise shows only git's client-side error.
+export function describeGitHttpRequests(
+  remotes: { url: string; requests: RecordedRequest[] }[],
+) {
+  return remotes
+    .map(
+      ({ url, requests }) =>
+        `${url}: ${requests.length} request(s)${requests
+          .map((request) =>
+            [
+              `\n  ${request.method} ${request.url}`,
+              `    cgi: ${JSON.stringify(request.cgi)}`,
+              `    backend: exit ${request.exitCode}, status ${request.status}`,
+              request.stderr && `    stderr: ${request.stderr.trimEnd()}`,
+              request.error && `    error: ${request.error}`,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          )
+          .join("")}`,
+    )
+    .join("\n");
 }
