@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import * as core from "@actions/core";
@@ -1060,38 +1061,68 @@ describe("publish from a pack directory", () => {
 
   // A file that no longer matches what pack recorded: shiprig refuses before
   // pushing, which it only does when it was given the pack directory.
+  // pack recorded the tarball's sha256; the file changed afterwards. shiprig
+  // refuses before pushing anything, which it only does when it was handed
+  // the pack directory.
   it("fails when a packed file was changed", async () => {
     await using fixture = await createPolyglotFixture();
     const cwd = fixture.path;
     await updateGithubContext(cwd);
     vi.stubEnv("RUNNER_TEMP", cwd);
+
+    // A real npm tarball, recorded as pack would record it.
+    const staging = path.join(cwd, "..", `stage-${path.basename(cwd)}`);
+    await fs.mkdir(path.join(staging, "package"), { recursive: true });
+    await fs.writeFile(
+      path.join(staging, "package", "package.json"),
+      JSON.stringify({ name: "pkg-a", version: "1.0.0" }),
+    );
+    const tarball = path.join(staging, "pkg-a-1.0.0.tgz");
+    await exec("tar", ["-czf", tarball, "-C", staging, "package"], {
+      throwOnError: true,
+    });
+    const original = await fs.readFile(tarball);
+    const integrity = `sha256-${createHash("sha256").update(original).digest("base64")}`;
     const dir = await packDir(cwd, [
       [
         {
           kind: "publish",
           name: "pkg-a",
           version: "1.0.0",
-          tarball: {
-            path: "packages/pkg-a-1.0.0.tgz",
-            integrity: "sha256-AAAA",
-          },
+          tarball: { path: "packages/pkg-a-1.0.0.tgz", integrity },
         },
       ],
     ]);
+    // The packed file, changed after pack recorded it.
     await fs.writeFile(
       path.join(dir, "packages", "pkg-a-1.0.0.tgz"),
-      "swapped",
+      Buffer.concat([original, Buffer.from("tampered")]),
     );
 
-    const result = await runPublish({
-      fromPackDir: dir,
-      github: createGithub(cwd),
-      createGithubReleases: false,
-      pushGitTags: false,
-      cwd,
-    });
+    // shiprig's output goes through @actions/exec to the process streams.
+    let output = "";
+    const capture = (chunk: string | Uint8Array) => {
+      output += chunk.toString();
+      return true;
+    };
+    const out = vi.spyOn(process.stdout, "write").mockImplementation(capture);
+    const err = vi.spyOn(process.stderr, "write").mockImplementation(capture);
+    let result;
+    try {
+      result = await runPublish({
+        fromPackDir: dir,
+        github: createGithub(cwd),
+        createGithubReleases: false,
+        pushGitTags: false,
+        cwd,
+      });
+    } finally {
+      out.mockRestore();
+      err.mockRestore();
+    }
     expect(result.exitCode).not.toBe(0);
     expect(result.published).toBe(false);
+    expect(output).toContain("doesn't match the integrity pack recorded");
   });
 });
 
