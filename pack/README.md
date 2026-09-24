@@ -1,16 +1,12 @@
 # rigsmith/shiprig-action/pack
 
-> [!WARNING]
-> **Not ported to shiprig yet.** This sub-action still runs the Changesets CLI,
-> so it needs `@changesets/cli` installed and only understands npm packages.
-> Porting it is phase 4 in [docs/DESIGN.md](../docs/DESIGN.md). The
-> [root action](../README.md) covers the same flow on shiprig in one job.
+This action runs `shiprig pack`: it builds the package file for each release the publish plan lists (`npm pack`, `dotnet pack`) and uploads them, with a `publish-plan.json` recording each file's sha256, as an artifact. [rigsmith/shiprig-action/publish](../publish/README.md) publishes exactly those files in a later job, so the job holding registry credentials never builds.
 
-This action packs publishable packages into tarballs, complements [rigsmith/shiprig-action/publish](../publish/README.md) to publish them in a later step.
+Cargo can't publish a prebuilt crate (`cargo publish` builds from source), so a plan with a cargo release fails here; publish crates with the built-in `shiprig publish`.
 
 ## Requirements
 
-- Needs repo checked out and `@changesets/cli` installed
+- Needs repo checked out and **shiprig ≥ 1.21.0** on `PATH` (or at `$SHIPRIG_BIN`); checked before anything runs
 - [Job permissions][job-permissions]: _none_
 - [Workflow triggers][workflow-triggers]: _any_
 

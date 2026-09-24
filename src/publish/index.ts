@@ -1,9 +1,15 @@
+import fs from "node:fs/promises";
+import os from "node:os";
 import * as core from "@actions/core";
 import { loadConfig, resolveSetting } from "../config.ts";
 import { GitHub } from "../github.ts";
 import { runPublish } from "../run.ts";
 import { requireShiprig } from "../shiprig.ts";
-import { getOptionalInput, getRequiredInput } from "../utils.ts";
+import {
+  downloadArtifact,
+  getOptionalInput,
+  getRequiredInput,
+} from "../utils.ts";
 
 try {
   await main();
@@ -18,15 +24,13 @@ async function main() {
   const githubToken = getRequiredInput("github-token");
   const script = getOptionalInput("script");
   const packDirArtifactId = getOptionalInput("pack-dir-artifact-id");
-  // Rejected before anything is downloaded, with or without a custom script:
-  // shiprig has no `publish --from-pack-dir` yet (the split pack/publish flow
-  // is phase 4 in docs/DESIGN.md), and a custom script is never handed the
-  // directory, so the artifact could only be fetched and ignored.
-  if (packDirArtifactId) {
+  // Rejected before anything is downloaded: a custom script is never handed
+  // the pack directory, so the artifact could only be fetched and ignored.
+  if (packDirArtifactId && script) {
     throw new Error(
-      "The 'pack-dir-artifact-id' input isn't supported by shiprig-action yet: " +
-        "shiprig can't publish from a pack directory. Omit it, and publish with " +
-        "the built-in `shiprig publish` or a custom 'script'.",
+      "The 'pack-dir-artifact-id' input can't be combined with a custom 'script': " +
+        "the script isn't given the pack directory. Omit 'script' to publish the " +
+        "packed files with `shiprig publish --from-pack-dir`.",
     );
   }
   // Each setting: the workflow's input, else shiprig-action.jsonc, else the
@@ -49,8 +53,19 @@ async function main() {
   // The publish sub-action always uses the GitHub API for tag pushes.
   const github = new GitHub({ cwd, githubToken });
 
+  // The directory `shiprig pack` filled in the pack job, fetched from its
+  // artifact.
+  const fromPackDir = packDirArtifactId
+    ? await downloadArtifact(
+        process.env.RUNNER_TEMP ?? (await fs.realpath(os.tmpdir())),
+        Number(packDirArtifactId),
+        "changeset-pack",
+      )
+    : undefined;
+
   const result = await runPublish({
     script,
+    fromPackDir,
     github,
     createGithubReleases,
     pushGitTags,

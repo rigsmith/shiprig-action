@@ -3,12 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import artifact from "@actions/artifact";
 import * as core from "@actions/core";
-import {
-  downloadArtifact,
-  execChangesetsCli,
-  getOptionalInput,
-  validateChangesetsCliVersion,
-} from "../utils.ts";
+import { execShiprig, requireShiprig } from "../shiprig.ts";
+import { downloadArtifact, getOptionalInput } from "../utils.ts";
 
 try {
   await main();
@@ -17,8 +13,8 @@ try {
 }
 
 async function main() {
+  await requireShiprig();
   const cwd = getOptionalInput("cwd") || process.cwd();
-  await validateChangesetsCliVersion(cwd);
 
   const publishPlanArtifactId = getOptionalInput("publish-plan-artifact-id");
 
@@ -58,7 +54,10 @@ async function pack(
     cliArgs.push("--from-publish-plan", args.publishPlanPath);
   }
 
-  await execChangesetsCli(cliArgs, {
+  // `shiprig pack` builds each "publish" release's package file (npm pack,
+  // dotnet pack) into <out-dir>/packages and records them in
+  // <out-dir>/publish-plan.json, as `changeset pack` does.
+  await execShiprig(cliArgs, {
     cwd,
     env: process.env,
   });

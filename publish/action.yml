@@ -14,7 +14,7 @@ inputs:
     description: "The command to use to publish packages"
     required: false
   pack-dir-artifact-id:
-    description: "Not supported yet: shiprig can't publish from a pack directory, so setting this fails the step before anything is downloaded. Publish with the built-in `shiprig publish` or a custom `script` instead."
+    description: "The artifact id the pack sub-action output: publish exactly those files with `shiprig publish --from-pack-dir`, building nothing. Can't be combined with `script`."
     required: false
   create-github-releases:
     description: "Whether to create Github releases after publish. Defaults to `true`. Can also be set as `createGithubReleases` in `shiprig-action.jsonc`; this input wins over the file."

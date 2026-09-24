@@ -195,17 +195,13 @@ export async function runPublish({
       execOptions,
     );
   } else {
+    // From a pack directory, shiprig publishes the files `shiprig pack` built
+    // (checked against their recorded integrity), building nothing.
+    const args = ["publish", "--yes"];
     if (fromPackDir) {
-      // `changeset publish --from-pack-dir` has no shiprig equivalent yet
-      // (the split pack/publish sub-actions are phase 4 in docs/DESIGN.md).
-      throw new Error(
-        "Publishing from a pack directory isn't supported by shiprig-action yet.",
-      );
+      args.push("--from-pack-dir", fromPackDir);
     }
-    changesetPublishOutput = await getExecOutputShiprig(
-      ["publish", "--yes"],
-      execOptions,
-    );
+    changesetPublishOutput = await getExecOutputShiprig(args, execOptions);
   }
 
   // The versions as they stand after the script, which is what its tag

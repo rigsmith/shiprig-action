@@ -74,6 +74,12 @@ version-pr-merge`, the default, publishes on the push that merges
   no longer needs `@changesets/cli`. With commits as a versioning source, the
   plan and preview cover the PR's own commits too (shiprig 1.21.0).
 
+- **The split sub-actions on shiprig** (unreleased). `select-mode`, `pack`
+  and `publish` run `shiprig publish-plan`, `shiprig pack` and `shiprig
+publish --from-pack-dir` (shiprig 1.21.0), so the build → pack → publish
+  job split works in any ecosystem that can publish a prebuilt file (npm,
+  NuGet). The action no longer depends on `@changesets/cli`.
+
 ## Next
 
 Nothing in progress; the next pick comes from Later.
@@ -90,10 +96,6 @@ changeset. Opt-in, so default behaviour keeps matching canon.
 
 Let an app and a library release on different schedules (release-please's
 `separate-pull-requests`). Matters most in polyglot repos like tweed.
-
-### 7. The split sub-actions (DESIGN phase 4)
-
-`select-mode` and `pack` still run the Changesets CLI; `pr-status` is done.
 
 ### 8. Upstream issues
 

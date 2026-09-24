@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import * as core from "@actions/core";
@@ -1020,6 +1021,119 @@ describe("polyglot", () => {
         ["crate-b@0.3.0", "### Minor Changes\n\n- Rust first release"],
       ]),
     );
+  });
+});
+
+describe("publish from a pack directory", () => {
+  // Directories made beside the fixture (inside it, discovery would see the
+  // staged package.json as a second pkg-a), removed after each test.
+  const made: string[] = [];
+  afterEach(async () => {
+    for (const dir of made.splice(0)) {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  async function packDir(cwd: string, plan: unknown[]) {
+    const dir = path.join(cwd, "..", `pack-${path.basename(cwd)}`);
+    made.push(dir);
+    await fs.mkdir(path.join(dir, "packages"), { recursive: true });
+    await fs.writeFile(
+      path.join(dir, "publish-plan.json"),
+      JSON.stringify({ version: 1, plan }),
+    );
+    return dir;
+  }
+
+  // An empty pack plan publishes nothing and reaches no registry; the tags
+  // still go out, as shiprig publish tags the release either way.
+  it("runs shiprig publish --from-pack-dir", async () => {
+    await using fixture = await createPolyglotFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+
+    const result = await runPublish({
+      fromPackDir: await packDir(cwd, []),
+      github: createGithub(cwd),
+      createGithubReleases: false,
+      pushGitTags: false,
+      cwd,
+    });
+    expect(result).toMatchObject({
+      published: true,
+      publishedPackages: expect.arrayContaining([
+        { name: "pkg-a", version: "1.0.0" },
+      ]),
+      exitCode: 0,
+    });
+  });
+
+  // A file that no longer matches what pack recorded: shiprig refuses before
+  // pushing, which it only does when it was given the pack directory.
+  // pack recorded the tarball's sha256; the file changed afterwards. shiprig
+  // refuses before pushing anything, which it only does when it was handed
+  // the pack directory.
+  it("fails when a packed file was changed", async () => {
+    await using fixture = await createPolyglotFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+
+    // A real npm tarball, recorded as pack would record it.
+    const staging = path.join(cwd, "..", `stage-${path.basename(cwd)}`);
+    made.push(staging);
+    await fs.mkdir(path.join(staging, "package"), { recursive: true });
+    await fs.writeFile(
+      path.join(staging, "package", "package.json"),
+      JSON.stringify({ name: "pkg-a", version: "1.0.0" }),
+    );
+    const tarball = path.join(staging, "pkg-a-1.0.0.tgz");
+    await exec("tar", ["-czf", tarball, "-C", staging, "package"], {
+      throwOnError: true,
+    });
+    const original = await fs.readFile(tarball);
+    const integrity = `sha256-${createHash("sha256").update(original).digest("base64")}`;
+    const dir = await packDir(cwd, [
+      [
+        {
+          kind: "publish",
+          name: "pkg-a",
+          version: "1.0.0",
+          tarball: { path: "packages/pkg-a-1.0.0.tgz", integrity },
+        },
+      ],
+    ]);
+    // The packed file, changed after pack recorded it.
+    await fs.writeFile(
+      path.join(dir, "packages", "pkg-a-1.0.0.tgz"),
+      Buffer.concat([original, Buffer.from("tampered")]),
+    );
+
+    // shiprig's output goes through @actions/exec to the process streams.
+    let output = "";
+    const capture = (chunk: string | Uint8Array) => {
+      output += chunk.toString();
+      return true;
+    };
+    const out = vi.spyOn(process.stdout, "write").mockImplementation(capture);
+    const err = vi.spyOn(process.stderr, "write").mockImplementation(capture);
+    let result;
+    try {
+      result = await runPublish({
+        fromPackDir: dir,
+        github: createGithub(cwd),
+        createGithubReleases: false,
+        pushGitTags: false,
+        cwd,
+      });
+    } finally {
+      out.mockRestore();
+      err.mockRestore();
+    }
+    expect(result.exitCode).not.toBe(0);
+    expect(result.published).toBe(false);
+    expect(output).toContain("doesn't match the integrity pack recorded");
   });
 });
 
