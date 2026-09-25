@@ -79,6 +79,10 @@ version-pr-merge`, the default, publishes on the push that merges
 publish --from-pack-dir` (shiprig 1.21.0), so the build → pack → publish
   job split works in any ecosystem that can publish a prebuilt file (npm,
   NuGet). The action no longer depends on `@changesets/cli`.
+- **Authenticated NuGet feeds in `publish-plan`** (shiprig 1.22.0,
+  rigsmith/rigsmith#488). A private feed that answers 401 is asked again with
+  the publish credential (`dotnet.auth`, else `NUGET_API_KEY`) as HTTP Basic
+  auth, only on the feed's own host, over https. The action needs nothing.
 - **5. Release-As (D)** (unreleased). `releaseAs` in `shiprig-action.jsonc`
   maps a package to the exact version to release it at, passed to shiprig
   1.21.0's `version --release-as`. It applies while the package is releasing
@@ -139,9 +143,6 @@ Supported through `@changesets/changelog-github`, but not the default.
 
 ### Smaller follow-ups
 
-- **Authenticated NuGet feeds in `publish-plan`.** shiprig's registry check
-  sends no credentials, so a feed that needs them answers 401 and the plan
-  fails (loudly). Asking with the publish credentials is a shiprig change.
 - **Tight test timeouts.** A few tests that spawn a stand-in shiprig run under
   vitest's 5-second default and time out on a heavily loaded machine.
 
