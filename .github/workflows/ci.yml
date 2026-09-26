@@ -68,6 +68,14 @@ jobs:
       - name: Format
         run: pnpm format
 
+      # The API tables are generated from each action.yml; regenerate them and
+      # fail if that changes anything, so they can't drift from the inputs.
+      - name: README API tables are current
+        run: |
+          pnpm update-readme
+          pnpm format:fix
+          git diff --exit-code -- '*.md' || { echo "::error::README API tables are stale: run pnpm update-readme && pnpm format:fix"; exit 1; }
+
   ci-ok:
     name: CI OK
     runs-on: ubuntu-latest
