@@ -133,7 +133,7 @@ export function getApproveMessage(
 
 Latest commit: ${commitSha}
 
-**${unreleased.length === 0 ? "The changes in this PR will be included in the next version bump." : "Some of the changes in this PR will be included in the next version bump."}**
+**${approveHeadline(releases, unreleased)}**
 ${getUnreleasedMessage(unreleased, source)}
 ${getReleasePlanMessage(releases, changesets, source)}
 ${getPreviewMessage(preview)}
@@ -171,6 +171,20 @@ ${getReleasePlanMessage([], 0, source)}
 [Click here to learn what changesets are, and how to add one](https://changesets.dev/faq).
 
 [Click here if you're a maintainer who wants to add a changeset to this PR](${newChangesetUrl})`;
+}
+
+/**
+ * The approve comment's headline: whether this PR's changes go into the next
+ * version bump, all of them, some of them, or (a PR whose changesets are all
+ * `none`) none of them.
+ */
+function approveHeadline(releases: PlannedRelease[], unreleased: string[]) {
+  if (!releases.some((r) => r.type !== "none")) {
+    return "Merging this PR will not cause a version bump for any packages.";
+  }
+  return unreleased.length === 0
+    ? "The changes in this PR will be included in the next version bump."
+    : "Some of the changes in this PR will be included in the next version bump.";
 }
 
 /** The warning for changed packages nothing releases: empty when there are none. */

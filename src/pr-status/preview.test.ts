@@ -557,6 +557,27 @@ describe("changed but not released", () => {
     );
   });
 
+  it("doesn't claim a release when every changeset is `none`", async () => {
+    await using fixture = await pullRequestRepo();
+    vi.stubEnv("RUNNER_TEMP", fixture.path);
+    // The PR's only changeset now says none for pkg-b; it also changes pkg-a.
+    await fs.writeFile(
+      path.join(fixture.path, ".changeset/pr-one.md"),
+      '---\n"pkg-b": none\n---\n\nNo release\n',
+    );
+    await changeA(fixture.path);
+    const { body, unreleased } = await getStatus(
+      fixture.path,
+      "main",
+      aPullRequest,
+    );
+    expect(unreleased).toEqual(["pkg-a"]);
+    expect(body).toContain(
+      "**Merging this PR will not cause a version bump for any packages.**",
+    );
+    expect(body).not.toContain("will be included in the next version bump");
+  });
+
   it("is empty when every changed package is decided", () => {
     expect(getUnreleasedMessage([], "changesets")).toBe("");
     expect(getUnreleasedMessage(["a", "b"], "changesets")).toContain(
@@ -584,6 +605,8 @@ describe("changesetPackageNames", () => {
     // A `#` inside a quoted name is part of it, not a comment.
     ['---\n"a#b": patch # why\n---\n', ["a#b"]],
     ["---\n'a # b': patch\n---\n", ["a # b"]],
+    // A comment after a plain key's line isn't part of any name.
+    ["---\na # note: x\nb: patch # why: y\n---\n", ["b"]],
     // An escape YAML doesn't have is skipped, never thrown.
     ['---\n"\\q": patch\nok: minor\n---\n', ["ok"]],
     ['---\n"\\x4": patch\n---\n', []],

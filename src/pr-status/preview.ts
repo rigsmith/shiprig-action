@@ -177,7 +177,9 @@ function releaseLineName(line: string): string | undefined {
     if (!m || !afterColon.test(line.slice(m[0].length))) return undefined;
     return m[1].replaceAll("''", "'");
   }
-  const m = /^([^\s"'#][^:]*?)\s*:(?:\s|$)/.exec(line);
+  // A plain key ends where a comment starts (a `#` after whitespace), so
+  // `a # note: x` names nothing rather than "a # note".
+  const m = /^([^\s"'#][^:]*?)\s*:(?:\s|$)/.exec(line.replace(/\s#.*$/, ""));
   return m?.[1];
 }
 
