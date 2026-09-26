@@ -7,11 +7,14 @@ import { gitdir } from "../test-utils.ts";
 import {
   getAbsentMessage,
   getApproveMessage,
+  getStatus,
   getStatusMessage,
+  getUnreleasedMessage,
 } from "./message.ts";
 import {
   pullRequestChangesets,
   changedPackages,
+  changesetPackageNames,
   changelogMarkdown,
   previewChangelog,
   versioningSource,
@@ -392,5 +395,146 @@ describe("messages", () => {
     expect(getAbsentMessage("abc", "https://x")).toContain(
       "No Changeset found",
     );
+  });
+});
+
+describe("changed but not released", () => {
+  async function changeA(cwd: string, message = "change a") {
+    await fs.writeFile(
+      path.join(cwd, "packages/a/index.js"),
+      "export const a = 1;\n",
+    );
+    await git(cwd, "add", "-A");
+    await git(cwd, "commit", "-q", "-m", message);
+  }
+
+  it("names a package the pull request changes that its changeset leaves out", async () => {
+    await using fixture = await pullRequestRepo();
+    vi.stubEnv("RUNNER_TEMP", fixture.path);
+    await changeA(fixture.path);
+    const { body, unreleased } = await getStatus(
+      fixture.path,
+      "main",
+      aPullRequest,
+    );
+    // pkg-b has its changeset; pkg-a changed with none.
+    expect(unreleased).toEqual(["pkg-a"]);
+    expect(body).toContain("Changeset detected");
+    expect(body).toContain("**Changed but not released:** `pkg-a`.");
+    expect(body).toContain("`none` if they shouldn't release");
+  });
+
+  it("counts a `none` changeset as a decision", async () => {
+    await using fixture = await pullRequestRepo();
+    vi.stubEnv("RUNNER_TEMP", fixture.path);
+    await fs.writeFile(
+      path.join(fixture.path, ".changeset/pr-none.md"),
+      // Double-quoted: shiprig reads single-quoted names from 1.22.0.
+      '---\n"pkg-a": none\n---\n\nNo release for a\n',
+    );
+    await changeA(fixture.path);
+    const { body, unreleased } = await getStatus(
+      fixture.path,
+      "main",
+      aPullRequest,
+    );
+    expect(unreleased).toEqual([]);
+    expect(body).not.toContain("Changed but not released");
+  });
+
+  it("names every changed package when there is no changeset", async () => {
+    await using fixture = await pullRequestRepo();
+    vi.stubEnv("RUNNER_TEMP", fixture.path);
+    await git(fixture.path, "rm", "-q", ".changeset/pr-one.md");
+    await git(fixture.path, "commit", "-q", "-m", "drop changeset");
+    const { body, unreleased } = await getStatus(
+      fixture.path,
+      "main",
+      aPullRequest,
+    );
+    expect(unreleased).toEqual(["pkg-b"]);
+    expect(body).toContain("No Changeset found");
+    expect(body).toContain("**Changed but not released:** `pkg-b`.");
+  });
+
+  it("says nothing when no package changed", async () => {
+    await using fixture = await pullRequestRepo();
+    vi.stubEnv("RUNNER_TEMP", fixture.path);
+    await git(fixture.path, "reset", "-q", "--hard", "main");
+    await fs.writeFile(path.join(fixture.path, "README.md"), "# Docs\n");
+    await git(fixture.path, "add", "-A");
+    await git(fixture.path, "commit", "-q", "-m", "docs");
+    const { body, unreleased } = await getStatus(
+      fixture.path,
+      "main",
+      aPullRequest,
+    );
+    expect(unreleased).toEqual([]);
+    expect(body).toContain("No Changeset found");
+    expect(body).not.toContain("Changed but not released");
+  });
+
+  it("takes a releasing commit as the release in a repository using both", async () => {
+    await using fixture = await commitsRepo("both");
+    vi.stubEnv("RUNNER_TEMP", fixture.path);
+    await fs.writeFile(
+      path.join(fixture.path, "packages/b/index.js"),
+      "export const z = 3;\n",
+    );
+    await git(fixture.path, "commit", "-qam", "fix: b");
+    await changeA(fixture.path, "tidy a");
+    const { body, unreleased } = await getStatus(
+      fixture.path,
+      "main",
+      aPullRequest,
+    );
+    expect(unreleased).toEqual(["pkg-a"]);
+    expect(body).toContain(
+      "add a changeset for them, or give a commit a releasing conventional type",
+    );
+  });
+
+  it("ignores changesets when commits are the only source", async () => {
+    await using fixture = await commitsRepo("commits");
+    vi.stubEnv("RUNNER_TEMP", fixture.path);
+    await fs.writeFile(
+      path.join(fixture.path, ".changeset/pr-none.md"),
+      '---\n"pkg-a": none\n---\n\nNo release for a\n',
+    );
+    await changeA(fixture.path, "tidy a");
+    const { body, unreleased } = await getStatus(
+      fixture.path,
+      "main",
+      aPullRequest,
+    );
+    expect(unreleased).toEqual(["pkg-a"]);
+    expect(body).toContain("No release found");
+    expect(body).toContain("give a commit a releasing conventional type");
+    expect(body).not.toContain("add a changeset");
+  });
+
+  it("is empty when every changed package is decided", () => {
+    expect(getUnreleasedMessage([], "changesets")).toBe("");
+    expect(getUnreleasedMessage(["a", "b"], "changesets")).toContain(
+      "`a`, `b`. This PR changes these packages",
+    );
+  });
+});
+
+describe("changesetPackageNames", () => {
+  it.each([
+    ['---\n"@scope/pkg": minor\n---\n\nx\n', ["@scope/pkg"]],
+    ["---\n'it''s': patch\n---\n", ["it's"]],
+    ["---\nplain-pkg: none\n---\n", ["plain-pkg"]],
+    ['---\n"esc\\"aped": patch\n---\n', ['esc"aped']],
+    ["---\n# a comment\na: patch # why\n\nb:   major\n---\n", ["a", "b"]],
+    ["---\n---\n\nEmpty\n", []],
+    // No closing line, or no header at all: not a changeset.
+    ["---\na: patch\n", []],
+    ["a: patch\n", []],
+    // A colon with nothing after it but a word is not a key: value line.
+    ["---\nhttp://x: patch\n---\n", []],
+  ])("reads %j", (content, expected) => {
+    expect(changesetPackageNames(content)).toEqual(expected);
   });
 });

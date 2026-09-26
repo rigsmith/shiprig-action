@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import path from "node:path";
 import { exec } from "tinyexec";
 import { getExecOutputShiprig, listPackages } from "../shiprig.ts";
@@ -134,4 +135,57 @@ export function changelogMarkdown(stdout: string): string | undefined {
     .join("\n")
     .trim();
   return body || undefined;
+}
+
+/**
+ * The packages a changeset's header names, whatever their bump, `none`
+ * included: a package the pull request names is one its author decided about.
+ * `shiprig status --output` leaves `none` out of the plan, so the header is
+ * read here. A name this misreads only adds or drops a warning; it never
+ * changes a release.
+ */
+export function changesetPackageNames(content: string): string[] {
+  const lines = content.split(/\r?\n/);
+  if (lines[0]?.trim() !== "---") return [];
+  const names: string[] = [];
+  for (const raw of lines.slice(1)) {
+    if (raw.trim() === "---") return names;
+    // A comment starts a line or follows whitespace.
+    const line = raw.replace(/(^|\s)#.*$/, "").trim();
+    const key =
+      /^"((?:[^"\\]|\\.)*)"\s*:/.exec(line) ??
+      /^'((?:[^']|'')*)'\s*:/.exec(line) ??
+      /^([^\s"'][^:]*?)\s*:(?:\s|$)/.exec(line);
+    if (!key) continue;
+    const quote = line[0];
+    names.push(
+      quote === '"'
+        ? (JSON.parse(`"${key[1]}"`) as string)
+        : quote === "'"
+          ? key[1].replaceAll("''", "'")
+          : key[1],
+    );
+  }
+  // No closing line: not a changeset header.
+  return [];
+}
+
+/**
+ * The packages the pull request changes that nothing in it releases: not in
+ * the plan (a changeset's bump, a releasing commit, or a dependent's cascade)
+ * and not named by one of its own changesets, `none` included.
+ */
+export async function unreleasedPackages(
+  cwd: string,
+  changed: string[],
+  released: string[],
+  ownChangesets: string[],
+): Promise<string[]> {
+  const root = (await git(cwd, ["rev-parse", "--show-toplevel"])).trim();
+  const decided = new Set(released);
+  for (const file of ownChangesets) {
+    const content = await fs.readFile(path.join(root, file), "utf8");
+    for (const name of changesetPackageNames(content)) decided.add(name);
+  }
+  return changed.filter((name) => !decided.has(name));
 }

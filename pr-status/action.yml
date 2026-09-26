@@ -7,6 +7,12 @@ inputs: {}
 outputs:
   comment-body:
     description: The generated comment body to present the changesets status in PRs.
+  unreleased-packages:
+    description: >
+      A JSON array of the packages the PR changes that nothing in it releases: no changeset
+      names them (`none` counts), no commit of theirs releases, and no dependency cascades
+      to them. It's `[]` when every changed package is accounted for. The action logs a
+      warning for them and never fails over them.
 branding:
   icon: package
   color: blue
