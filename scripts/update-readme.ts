@@ -7,6 +7,9 @@ await main();
 
 async function main() {
   const problems: string[] = [];
+  // Every README is checked before any is written, so a problem in one
+  // leaves the whole set as it was rather than half regenerated.
+  const writes: [string, string][] = [];
   // Every published action (the repository's own CI helpers under .github/
   // aside) documents its inputs and outputs in a README beside it.
   for await (const actionPath of fs.glob("**/action.yml", {
@@ -50,18 +53,27 @@ async function main() {
       /<!-- api-start -->[\s\S]*?<!-- api-end -->/,
       `<!-- api-start -->\n\n${content}\n\n<!-- api-end -->`,
     );
-    await fs.writeFile(readmePath, updated);
+    writes.push([readmePath, updated]);
   }
   if (problems.length > 0) {
     for (const p of problems) console.error(p);
     process.exitCode = 1;
+    return;
+  }
+  for (const [readmePath, updated] of writes) {
+    await fs.writeFile(readmePath, updated);
   }
 }
 
 function renderSection(title: string, entries: Record<string, any>) {
   const rows: string[][] = [];
   for (const [name, entry] of Object.entries(entries)) {
-    let description = (entry.description ?? "").trim().replace(/\|/g, "\\|");
+    let description = (entry.description ?? "")
+      .trim()
+      .replace(/\|/g, "\\|")
+      // An HTML comment opener in a description would read as a marker (or
+      // hide the rest of the table); `&lt;` renders the same.
+      .replaceAll("<!--", "&lt;!--");
     if (entry.required) description = `**Required.** ${description}`;
     rows.push([`\`${name}\``, description]);
   }
