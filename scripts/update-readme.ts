@@ -7,8 +7,10 @@ await main();
 
 async function main() {
   const problems: string[] = [];
-  // Every README is checked before any is written, so a problem in one
-  // leaves the whole set as it was rather than half regenerated.
+  // Every README is checked before any is written, so a problem the checks
+  // find leaves the whole set as it was rather than half regenerated. (A
+  // write that fails partway can still leave a mix; the CI step's git diff
+  // shows it, and a rerun finishes the job.)
   const writes: [string, string][] = [];
   // Every published action (the repository's own CI helpers under .github/
   // aside) documents its inputs and outputs in a README beside it.
