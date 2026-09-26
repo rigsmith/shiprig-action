@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { exec } from "tinyexec";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -513,6 +514,49 @@ describe("changed but not released", () => {
     expect(body).not.toContain("add a changeset");
   });
 
+  it("doesn't follow a changeset symlinked out of the checkout", async () => {
+    await using fixture = await pullRequestRepo();
+    vi.stubEnv("RUNNER_TEMP", fixture.path);
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "outside-"));
+    try {
+      await fs.writeFile(
+        path.join(outside, "decides.md"),
+        '---\n"pkg-a": none\n---\n\nFrom outside\n',
+      );
+      await fs.symlink(
+        path.join(outside, "decides.md"),
+        path.join(fixture.path, ".changeset/link.md"),
+      );
+      await changeA(fixture.path);
+      expect(await pullRequestChangesets(fixture.path, "main")).toContain(
+        ".changeset/link.md",
+      );
+      const { unreleased } = await getStatus(
+        fixture.path,
+        "main",
+        aPullRequest,
+      );
+      // The link's `none` would have decided pkg-a; it isn't read.
+      expect(unreleased).toEqual(["pkg-a"]);
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("says only some changes release when some don't", async () => {
+    await using fixture = await pullRequestRepo();
+    vi.stubEnv("RUNNER_TEMP", fixture.path);
+    const { body: all } = await getStatus(fixture.path, "main", aPullRequest);
+    expect(all).toContain(
+      "**The changes in this PR will be included in the next version bump.**",
+    );
+    await changeA(fixture.path);
+    const { body: some } = await getStatus(fixture.path, "main", aPullRequest);
+    expect(some).toContain(
+      "**Some of the changes in this PR will be included in the next version bump.**",
+    );
+  });
+
   it("is empty when every changed package is decided", () => {
     expect(getUnreleasedMessage([], "changesets")).toBe("");
     expect(getUnreleasedMessage(["a", "b"], "changesets")).toContain(
@@ -534,6 +578,15 @@ describe("changesetPackageNames", () => {
     ["a: patch\n", []],
     // A colon with nothing after it but a word is not a key: value line.
     ["---\nhttp://x: patch\n---\n", []],
+    // YAML's double-quoted escapes, beyond JSON's.
+    ['---\n"\\x41\\_b": patch\n---\n', ["A\u00a0b"]],
+    ['---\n"\\U0001F600": patch\n---\n', ["\u{1F600}"]],
+    // A `#` inside a quoted name is part of it, not a comment.
+    ['---\n"a#b": patch # why\n---\n', ["a#b"]],
+    ["---\n'a # b': patch\n---\n", ["a # b"]],
+    // An escape YAML doesn't have is skipped, never thrown.
+    ['---\n"\\q": patch\nok: minor\n---\n', ["ok"]],
+    ['---\n"\\x4": patch\n---\n', []],
   ])("reads %j", (content, expected) => {
     expect(changesetPackageNames(content)).toEqual(expected);
   });

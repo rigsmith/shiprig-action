@@ -133,7 +133,7 @@ export function getApproveMessage(
 
 Latest commit: ${commitSha}
 
-**The changes in this PR will be included in the next version bump.**
+**${unreleased.length === 0 ? "The changes in this PR will be included in the next version bump." : "Some of the changes in this PR will be included in the next version bump."}**
 ${getUnreleasedMessage(unreleased, source)}
 ${getReleasePlanMessage(releases, changesets, source)}
 ${getPreviewMessage(preview)}
