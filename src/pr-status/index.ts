@@ -19,7 +19,16 @@ async function main() {
   }
 
   core.info("Creating comment message...");
-  const commentBody = await getCommentMessage(context);
-  core.setOutput("comment-body", commentBody);
+  const { body, unreleased } = await getCommentMessage(context);
+  core.setOutput("comment-body", body);
+  core.setOutput("unreleased-packages", JSON.stringify(unreleased));
+  // A warning, never a failure: whether a change needs a release is the
+  // author's call.
+  if (unreleased.length > 0) {
+    core.warning(
+      `This PR changes ${unreleased.join(", ")}, and nothing in it releases ${unreleased.length === 1 ? "it" : "them"}.`,
+      { title: "Changed but not released" },
+    );
+  }
   core.info("Done!");
 }

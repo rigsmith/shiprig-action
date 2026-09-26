@@ -4,6 +4,8 @@ This action generates the changesets status in PRs: whether the PR has changeset
 
 It runs on shiprig, so it covers every ecosystem shiprig supports, not only npm. The plan comes from `shiprig status --since <base>` and the preview from `shiprig version --changelog --since <base>`, both limited to what the PR adds: its changesets and, when the repository also versions from conventional commits (`versioning.source` of `commits` or `both`), its commits. Changesets and commits already on the base branch stay out of both. A PR in such a repository that releases from its commits alone gets a "Release detected" comment with the plan and preview. With commits as the only source, a changeset carries no release intent, so the comment goes by the plan alone, and a PR that releases nothing is pointed at a releasing conventional commit (`feat:`, `fix:`) rather than a changeset.
 
+When the PR changes a package that nothing in it releases, the comment names it under **Changed but not released**. That's a package no changeset of the PR's names (a `none` bump counts as a decision), no commit of the PR's releases, and no dependency cascades to. The action also logs a warning annotation and sets the `unreleased-packages` output. It never fails over this: whether a change needs a release is the author's call. To block such PRs instead, run `shiprig status --since <base>` as a required check.
+
 It requires the repo to be checked out, and will automatically fetch the PR head ref into a temporary detached worktree in order to infer the changed files and packages.
 
 ## Requirements
@@ -36,8 +38,9 @@ It requires the repo to be checked out, and will automatically fetch the PR head
 
 Inputs: _none_
 
-| Outputs        | Description                                                         |
-| -------------- | ------------------------------------------------------------------- |
-| `comment-body` | The generated comment body to present the changesets status in PRs. |
+| Outputs               | Description                                                                                                                                                                                                                                                                                              |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `comment-body`        | The generated comment body to present the changesets status in PRs.                                                                                                                                                                                                                                      |
+| `unreleased-packages` | A JSON array of the packages the PR changes that nothing in it releases: no changeset names them (`none` counts), no commit of theirs releases, and no dependency cascades to them. It's `[]` when every changed package is accounted for. The action logs a warning for them and never fails over them. |
 
 <!-- api-end -->

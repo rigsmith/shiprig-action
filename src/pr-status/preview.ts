@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import path from "node:path";
 import { exec } from "tinyexec";
 import { getExecOutputShiprig, listPackages } from "../shiprig.ts";
@@ -134,4 +135,142 @@ export function changelogMarkdown(stdout: string): string | undefined {
     .join("\n")
     .trim();
   return body || undefined;
+}
+
+/**
+ * The packages a changeset's header names, whatever their bump, `none`
+ * included: a package the pull request names is one its author decided about.
+ * `shiprig status --output` leaves `none` out of the plan, so the header is
+ * read here. A name this misreads only adds or drops a warning; it never
+ * changes a release.
+ */
+export function changesetPackageNames(content: string): string[] {
+  const lines = content.split(/\r?\n/);
+  if (lines[0]?.trim() !== "---") return [];
+  const names: string[] = [];
+  for (const raw of lines.slice(1)) {
+    if (raw.trim() === "---") return names;
+    const name = releaseLineName(raw.trim());
+    if (name !== undefined) names.push(name);
+  }
+  // No closing line: not a changeset header.
+  return [];
+}
+
+// What may follow a key's colon: whitespace, the end, or nothing else.
+const afterColon = /^\s*:(?:\s|$)/;
+
+/**
+ * The package a frontmatter line names, or undefined for anything else (a
+ * comment, `type:`, a line this can't read). The key is read before any
+ * comment is looked for, so a `#` inside a quoted name stays part of it.
+ */
+function releaseLineName(line: string): string | undefined {
+  if (line === "" || line.startsWith("#")) return undefined;
+  if (line.startsWith('"')) {
+    const m = /^"((?:[^"\\]|\\.)*)"/.exec(line);
+    if (!m || !afterColon.test(line.slice(m[0].length))) return undefined;
+    return yamlDoubleQuoted(m[1]);
+  }
+  if (line.startsWith("'")) {
+    const m = /^'((?:[^']|'')*)'/.exec(line);
+    if (!m || !afterColon.test(line.slice(m[0].length))) return undefined;
+    return m[1].replaceAll("''", "'");
+  }
+  // A plain key ends where a comment starts (a `#` after whitespace), so
+  // `a # note: x` names nothing rather than "a # note".
+  const m = /^([^\s"'#][^:]*?)\s*:(?:\s|$)/.exec(line.replace(/\s#.*$/, ""));
+  return m?.[1];
+}
+
+const yamlEscapes: Record<string, string> = {
+  "0": "\0",
+  a: "\x07",
+  b: "\b",
+  t: "\t",
+  "\t": "\t",
+  n: "\n",
+  v: "\v",
+  f: "\f",
+  r: "\r",
+  e: "\x1b",
+  " ": " ",
+  '"': '"',
+  "/": "/",
+  "\\": "\\",
+  N: "\u0085",
+  _: "\u00a0",
+  L: "\u2028",
+  P: "\u2029",
+};
+
+/**
+ * A YAML double-quoted scalar's text, escapes decoded (YAML's set, which is
+ * JSON's plus `\x`, `\U`, `\_` and a few more), or undefined for an escape YAML
+ * doesn't have. Never throws: a changeset this can't read only costs a warning.
+ */
+function yamlDoubleQuoted(body: string): string | undefined {
+  let out = "";
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i];
+    if (c !== "\\") {
+      out += c;
+      continue;
+    }
+    const e = body[++i];
+    const hex = { x: 2, u: 4, U: 8 }[e as "x" | "u" | "U"];
+    if (hex) {
+      const digits = body.slice(i + 1, i + 1 + hex);
+      if (!/^[0-9a-fA-F]+$/.test(digits) || digits.length !== hex)
+        return undefined;
+      const cp = Number.parseInt(digits, 16);
+      if (cp > 0x10ffff) return undefined;
+      out += String.fromCodePoint(cp);
+      i += hex;
+      continue;
+    }
+    if (!(e in yamlEscapes)) return undefined;
+    out += yamlEscapes[e];
+  }
+  return out;
+}
+
+/**
+ * The packages the pull request changes that nothing in it releases: not in
+ * the plan (a changeset's bump, a releasing commit, or a dependent's cascade)
+ * and not named by one of its own changesets, `none` included.
+ */
+export async function unreleasedPackages(
+  cwd: string,
+  changed: string[],
+  released: string[],
+  ownChangesets: string[],
+): Promise<string[]> {
+  const root = await fs.realpath(
+    (await git(cwd, ["rev-parse", "--show-toplevel"])).trim(),
+  );
+  const decided = new Set(released);
+  for (const file of ownChangesets) {
+    const content = await readInside(root, file);
+    if (content === undefined) continue;
+    for (const name of changesetPackageNames(content)) decided.add(name);
+  }
+  return changed.filter((name) => !decided.has(name));
+}
+
+/**
+ * A changeset file's text, when it is a regular file inside root. The pull
+ * request controls the checkout, so a symlink out of it (to a runner's own
+ * files, say) is skipped rather than followed.
+ */
+async function readInside(
+  root: string,
+  file: string,
+): Promise<string | undefined> {
+  const full = path.join(root, file);
+  const stat = await fs.lstat(full).catch(() => undefined);
+  if (!stat?.isFile()) return undefined;
+  const real = await fs.realpath(full);
+  if (!real.startsWith(root + path.sep)) return undefined;
+  return fs.readFile(real, "utf8");
 }
