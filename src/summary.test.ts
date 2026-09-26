@@ -34,6 +34,32 @@ describe("summaries", () => {
     expect(md).toContain("| `pkg-a` | minor | 1.1.0 |");
   });
 
+  it("links a version PR per group, and says which group each package is in", () => {
+    const md = planSummary(
+      [
+        { name: "b", type: "patch", newVersion: "1.0.1", group: "b" },
+        { name: "a", type: "minor", newVersion: "1.1.0", group: "a" },
+      ],
+      "https://github.com",
+      [11, 12],
+    );
+    expect(md).toContain(
+      "A version PR per release group ([#11](https://github.com/acme/widgets/pull/11), [#12](https://github.com/acme/widgets/pull/12)) releases:",
+    );
+    expect(md).toContain("| Package | Bump | Version | Group |");
+    expect(md).toContain("| `a` | minor | 1.1.0 | a |");
+  });
+
+  it("keeps the plain table for one PR, even with groups", () => {
+    const md = planSummary(
+      [{ name: "a", type: "minor", newVersion: "1.1.0", group: "a" }],
+      "https://github.com",
+      [11],
+    );
+    expect(md).toContain("The version PR [#11]");
+    expect(md).toContain("| `a` | minor | 1.1.0 |\n");
+  });
+
   it("lists what was published, or says nothing was", () => {
     expect(
       publishedSummary([{ name: "widgets", version: "1.2.0", tag: "v1.2.0" }]),

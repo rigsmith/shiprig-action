@@ -58,6 +58,10 @@
         "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
       }
     },
+    "separatePullRequests": {
+      "type": "boolean",
+      "description": "Open a version PR per release group (packages that must be versioned together) instead of one for everything (input separate-pull-requests; release-please's separate-pull-requests). Needs shiprig 1.22.0. Not with a custom version-script. Default: false."
+    },
     "pushWithGitCli": {
       "type": "boolean",
       "description": "Push with the Git CLI instead of the GitHub API (input push-with-git-cli). Default: false."

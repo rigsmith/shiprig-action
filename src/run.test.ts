@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -10,6 +11,7 @@ import { exec } from "tinyexec";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GitHub } from "./github.ts";
 import {
+  branchSlug,
   publishDecision,
   releaseTitle,
   runPublish,
@@ -45,6 +47,7 @@ let mockedGithubMethods = {
   pulls: {
     create: vi.fn(),
     list: vi.fn(),
+    update: vi.fn(),
   },
   repos: {
     createRelease: vi.fn(),
@@ -436,7 +439,7 @@ describe("version", () => {
 
     const result = await runVersion({ github: createGithub(cwd), cwd });
 
-    expect(result).toEqual({ skipped: "stale" });
+    expect(result).toEqual({ skipped: "stale", pullRequestNumbers: [] });
     expect(mockedGithubMethods.git.getRef).toHaveBeenCalledWith(
       expect.objectContaining({ ref: "heads/some-branch" }),
     );
@@ -479,7 +482,7 @@ describe("version", () => {
 
     const result = await runVersion({ github: createGithub(cwd), cwd });
 
-    expect(result).toEqual({ skipped: "stale" });
+    expect(result).toEqual({ skipped: "stale", pullRequestNumbers: [] });
     expect(mockedGithubMethods.git.getRef).toHaveBeenCalledTimes(2);
     expect(vi.mocked(commitChangesSinceBase)).not.toHaveBeenCalled();
     expect(mockedGithubMethods.pulls.create).not.toHaveBeenCalled();
@@ -512,7 +515,10 @@ describe("version", () => {
       branch: "main",
     });
 
-    expect(result).toEqual({ pullRequestNumber: 123 });
+    expect(result).toEqual({
+      pullRequestNumber: 123,
+      pullRequestNumbers: [123],
+    });
     expect(mockedGithubMethods.git.getRef).toHaveBeenCalledTimes(2);
     for (const [args] of mockedGithubMethods.git.getRef.mock.calls) {
       expect(args).toMatchObject({ ref: "heads/some-branch" });
@@ -540,7 +546,11 @@ describe("version", () => {
 
     const result = await runVersion({ github: createGithub(cwd), cwd });
 
-    expect(result).toEqual({ pullRequestNumber: 5, skipped: "held" });
+    expect(result).toEqual({
+      pullRequestNumber: 5,
+      pullRequestNumbers: [5],
+      skipped: "held",
+    });
     expect(vi.mocked(commitChangesSinceBase)).not.toHaveBeenCalled();
     expect(mockedGithubMethods.pulls.create).not.toHaveBeenCalled();
     expect(mockedGraphql).not.toHaveBeenCalled();
@@ -569,7 +579,11 @@ describe("version", () => {
 
     const result = await runVersion({ github: createGithub(cwd), cwd });
 
-    expect(result).toEqual({ pullRequestNumber: 5, skipped: "held" });
+    expect(result).toEqual({
+      pullRequestNumber: 5,
+      pullRequestNumbers: [5],
+      skipped: "held",
+    });
     expect(mockedGithubMethods.pulls.list).toHaveBeenCalledTimes(2);
     expect(vi.mocked(commitChangesSinceBase)).not.toHaveBeenCalled();
     expect(mockedGraphql).not.toHaveBeenCalled();
@@ -968,7 +982,7 @@ describe("polyglot", () => {
 
     const result = await runVersion({ github: createGithub(cwd), cwd });
 
-    expect(result).toEqual({ pullRequestNumber: 7 });
+    expect(result).toEqual({ pullRequestNumber: 7, pullRequestNumbers: [7] });
     // Two packages at different versions: each named, in the title and the
     // commit alike.
     const title = "chore: release crate-b@0.3.1, pkg-a@1.1.0";
@@ -1295,6 +1309,163 @@ describe("releaseAs", () => {
         releaseAs: { "changesets-dev-simple-project-pkg-a": "3.0.0" },
       }),
     ).rejects.toThrow("can't be combined with a custom version-script");
+  });
+});
+
+describe("separatePullRequests", () => {
+  // Release groups arrive with shiprig 1.22.0 (`version --only`); against an
+  // older pin the per-group runs can't happen, and the action says why.
+  const hasGroups = execFileSync(
+    process.env.SHIPRIG_BIN!,
+    ["version", "--help"],
+    { encoding: "utf8" },
+  ).includes("--only");
+  // Three packages with no links between them: a and b each have a
+  // changeset; c has none.
+  function createIndependentFixture() {
+    const pkg = (name: string) => JSON.stringify({ name, version: "1.0.0" });
+    return gitdir({
+      node_modules: (api) => api.symlink(nodeModulesDir),
+      ".changeset/config.json": JSON.stringify({}),
+      "packages/a/package.json": pkg("@acme/a"),
+      "packages/b/package.json": pkg("b"),
+      "packages/c/package.json": pkg("c"),
+      ".changeset/a-change.md": '---\n"@acme/a": minor\n---\n\nA feature\n',
+      ".changeset/b-change.md": '---\n"b": patch\n---\n\nA fix\n',
+      "package.json": JSON.stringify({
+        name: "independent",
+        version: "1.0.0",
+        private: true,
+        workspaces: ["packages/*"],
+      }),
+      "package-lock.json": "",
+    });
+  }
+
+  const ownPr = (number: number, ref: string, labels: string[] = []) => ({
+    number,
+    head: { ref, repo: { full_name: "changesets/action" } },
+    labels: labels.map((name) => ({ name })),
+  });
+
+  it("slugs a group name into a branch segment", () => {
+    expect(branchSlug("@acme/lib")).toBe("acme-lib");
+    expect(branchSlug("plain")).toBe("plain");
+    expect(branchSlug("a..b")).toBe("a.b");
+    expect(branchSlug("@@")).toBe("group");
+    expect(branchSlug("x.lock")).toBe("x-lock");
+  });
+
+  it.runIf(hasGroups)("opens a version PR per release group", async () => {
+    await using fixture = await createIndependentFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    mockedGithubMethods.pulls.create
+      .mockImplementationOnce(() => ({ data: { number: 11 } }))
+      .mockImplementationOnce(() => ({ data: { number: 12 } }));
+
+    const result = await runVersion({
+      github: createGithub(cwd),
+      cwd,
+      separatePullRequests: true,
+    });
+
+    const created = mockedGithubMethods.pulls.create.mock.calls.map(
+      (c) => c[0] as { head: string; title: string },
+    );
+    expect(created.map((c) => c.head)).toEqual([
+      "changeset-release/some-branch/acme-a",
+      "changeset-release/some-branch/b",
+    ]);
+    // Each PR versions only its group.
+    expect(created[0].title).toContain("1.1.0");
+    expect(created[0].title).not.toContain("1.0.1");
+    expect(created[1].title).toContain("1.0.1");
+    expect(created[1].title).not.toContain("1.1.0");
+    expect(result.pullRequestNumbers).toEqual([11, 12]);
+    expect(result.pullRequestNumber).toBe(11);
+    expect(mockedGithubMethods.pulls.update).not.toHaveBeenCalled();
+    // The first group's new changelog didn't follow into the second's branch.
+    await expect(
+      fs.access(path.join(cwd, "packages/a/CHANGELOG.md")),
+    ).rejects.toThrow();
+    await fs.access(path.join(cwd, "packages/b/CHANGELOG.md"));
+  });
+
+  it.runIf(hasGroups)(
+    "closes a version PR whose group has nothing pending, unless it's held",
+    async () => {
+      await using fixture = await createIndependentFixture();
+      const cwd = fixture.path;
+      await updateGithubContext(cwd);
+      const open = [
+        ownPr(1, "changeset-release/some-branch"), // the single PR, from before
+        ownPr(2, "changeset-release/some-branch/c"), // c released already
+        ownPr(3, "changeset-release/some-branch/gone", ["release:hold"]),
+        ownPr(4, "feature"), // not a version PR
+        ownPr(6, "changeset-release/some-branch/b"), // b's, still current
+        {
+          ...ownPr(5, "changeset-release/some-branch/fork"),
+          head: {
+            ref: "changeset-release/some-branch/fork",
+            repo: { full_name: "someone/action" },
+          },
+        },
+      ];
+      mockedGithubMethods.pulls.list.mockImplementation(
+        (args: { head?: string }) => ({
+          // A group's own lookup (by head) finds nothing, so it creates.
+          data: args.head === undefined ? open : [],
+        }),
+      );
+      mockedGithubMethods.pulls.create.mockImplementation(() => ({
+        data: { number: 20 },
+      }));
+
+      await runVersion({
+        github: createGithub(cwd),
+        cwd,
+        separatePullRequests: true,
+      });
+
+      const closed = mockedGithubMethods.pulls.update.mock.calls.map(
+        (c) => (c[0] as { pull_number: number }).pull_number,
+      );
+      expect(closed).toEqual([1, 2]);
+      expect(
+        mockedGithubMethods.issues.createComment.mock.calls.map(
+          (c) => c[0].issue_number,
+        ),
+      ).toEqual([1, 2]);
+    },
+  );
+
+  it.skipIf(hasGroups)("says which shiprig it needs", async () => {
+    await using fixture = await createIndependentFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    await expect(
+      runVersion({
+        github: createGithub(cwd),
+        cwd,
+        separatePullRequests: true,
+      }),
+    ).rejects.toThrow("needs shiprig 1.22.0");
+    expect(mockedGithubMethods.pulls.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses a custom version script", async () => {
+    await using fixture = await createIndependentFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    await expect(
+      runVersion({
+        github: createGithub(cwd),
+        cwd,
+        script: "echo custom",
+        separatePullRequests: true,
+      }),
+    ).rejects.toThrow("version-script");
   });
 });
 

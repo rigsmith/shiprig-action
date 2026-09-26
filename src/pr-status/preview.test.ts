@@ -67,9 +67,9 @@ describe("pr-status on shiprig", () => {
   it("reads the plan for the pull request's own changesets", async () => {
     await using fixture = await pullRequestRepo();
     vi.stubEnv("RUNNER_TEMP", fixture.path);
-    expect(await readReleasePlan(fixture.path, { since: "main" })).toEqual([
-      { name: "pkg-b", type: "minor", newVersion: "1.1.0" },
-    ]);
+    expect(
+      await readReleasePlan(fixture.path, { since: "main" }),
+    ).toMatchObject([{ name: "pkg-b", type: "minor", newVersion: "1.1.0" }]);
   });
 
   it("finds the changesets the pull request adds, not main's", async () => {

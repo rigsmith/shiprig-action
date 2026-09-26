@@ -28,6 +28,13 @@ inputs:
       `chore: release 5 packages` beyond that.
       Can also be set as `prTitle` in `shiprig-action.jsonc`; this input wins over the file.
     required: false
+  separate-pull-requests:
+    description: >
+      Open a version PR per release group (packages that must be versioned together) instead of
+      one for everything, so packages can release on their own schedules, as release-please's
+      `separate-pull-requests`. Needs shiprig 1.22.0. Defaults to `false`. Can also be set as
+      `separatePullRequests` in `shiprig-action.jsonc`; this input wins over the file.
+    required: false
   hold-label:
     description: >
       A label on the version PR that stops the action from updating its branch, so it can be
@@ -83,7 +90,9 @@ outputs:
   has-changesets:
     description: A "true" or "false" string value about whether changeset files exist (including those waiting in .changeset/pre/ after `pre exit`). A release from conventional commits alone doesn't set it.
   pr-number:
-    description: The pull request number that was created or updated
+    description: The pull request number that was created or updated (with separate-pull-requests, the first group's)
+  pr-numbers:
+    description: A JSON array of every version pull request created or updated, one per release group with separate-pull-requests
 branding:
   icon: "package"
   color: "blue"

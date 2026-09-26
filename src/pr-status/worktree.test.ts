@@ -120,7 +120,7 @@ Add pkg-a
     const currentBranch = await git(worktree.cwd, ["branch", "--show-current"]);
     expect(currentBranch).toBe("");
 
-    expect(releases).toEqual([
+    expect(releases).toMatchObject([
       {
         name: "pkg-a",
         type: "patch",

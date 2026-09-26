@@ -28,24 +28,36 @@ function prLink(serverUrl: string, pr: number): string {
   return `[#${pr}](${serverUrl}/${owner}/${repo}/pull/${pr})`;
 }
 
-/** The version path: what the version PR releases. */
+/** The version path: what the version PR (or the PR per group) releases. */
 export function planSummary(
   releases: PlannedRelease[],
   serverUrl: string,
-  pr?: number,
+  pr?: number | number[],
 ): string {
+  const prs = pr === undefined ? [] : Array.isArray(pr) ? pr : [pr];
+  const grouped = releases.some((r) => r.group !== undefined) && prs.length > 1;
   const rows = [...releases]
     .sort((a, b) => a.name.localeCompare(b.name))
-    .map((r) => `| \`${r.name}\` | ${r.type} | ${r.newVersion} |`);
+    .map((r) =>
+      grouped
+        ? `| \`${r.name}\` | ${r.type} | ${r.newVersion} | ${r.group ?? r.name} |`
+        : `| \`${r.name}\` | ${r.type} | ${r.newVersion} |`,
+    );
+  const lead =
+    prs.length === 0
+      ? "The version PR wasn't updated by this run."
+      : prs.length === 1
+        ? `The version PR ${prLink(serverUrl, prs[0])} releases:`
+        : `A version PR per release group (${prs.map((n) => prLink(serverUrl, n)).join(", ")}) releases:`;
   return [
     "## shiprig-action: version PR",
     "",
-    pr === undefined
-      ? "The version PR wasn't updated by this run."
-      : `The version PR ${prLink(serverUrl, pr)} releases:`,
+    lead,
     "",
-    "| Package | Bump | Version |",
-    "| --- | --- | --- |",
+    grouped
+      ? "| Package | Bump | Version | Group |"
+      : "| Package | Bump | Version |",
+    grouped ? "| --- | --- | --- | --- |" : "| --- | --- | --- |",
     ...rows,
     "",
   ].join("\n");

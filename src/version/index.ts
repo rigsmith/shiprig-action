@@ -41,7 +41,7 @@ async function main() {
     pushWithGitCli,
   });
 
-  const { pullRequestNumber } = await runVersion({
+  const { pullRequestNumber, pullRequestNumbers } = await runVersion({
     script,
     github,
     cwd,
@@ -53,8 +53,11 @@ async function main() {
     branch: prBaseBranch,
     holdLabel: resolveSetting(config, "holdLabel"),
     releaseAs: resolveSetting(config, "releaseAs"),
+    separatePullRequests:
+      resolveSetting(config, "separatePullRequests") ?? false,
   });
 
+  core.setOutput("pr-numbers", JSON.stringify(pullRequestNumbers ?? []));
   if (pullRequestNumber !== undefined) {
     core.setOutput("pr-number", String(pullRequestNumber));
   }
