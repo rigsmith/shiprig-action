@@ -118,6 +118,21 @@ runs leave its branch alone, so it can be edited by hand; remove the label and
 the next run rebuilds it. `hold-label` (or `holdLabel` in
 `shiprig-action.jsonc`) names a different label.
 
+**Releasing at an exact version.** `releaseAs` in `shiprig-action.jsonc` maps
+a package to the version it should release at, as release-please's
+`release-as` does:
+
+```jsonc
+{ "releaseAs": { "my-lib": "2.0.0" } }
+```
+
+The version PR then carries that version (`shiprig version --release-as`). It
+applies while the package is releasing (a changeset or commit releases it) and
+is below the version; once the package reaches it, the entry is skipped, so it
+can stay in the file until you tidy it. A prerelease sets its own suffix, so
+it waits for a normal release. It's file-only, and a custom `version-script`
+can't take it (pass `--release-as` to shiprig in the script instead).
+
 **Job summary.** Every run writes what it did to its summary page: the release
 plan and the version PR, what was published and tagged, or why nothing
 happened.
@@ -160,7 +175,8 @@ keeps its settings in `release-please-config.json`:
   them all.
 - **Keys:** `prTitle`, `commitMessage`, `prDraft`, `prBaseBranch`,
   `publishOn`, `createGithubReleases`, `pushGitTags`, `pushWithGitCli`, `commentReleasedPrs` and `holdLabel`, each
-  standing in for the input of the same name. An unknown key or a wrong type
+  standing in for the input of the same name, and `releaseAs`, which has no
+  input. An unknown key or a wrong type
   fails the run; comments and trailing commas are fine.
 - **Precedence:** an input set in the workflow wins, then the file, then the
   default.

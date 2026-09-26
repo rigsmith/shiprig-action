@@ -179,6 +179,7 @@ async function main() {
         prDraft,
         branch: prBaseBranch,
         holdLabel: resolveSetting(config, "holdLabel"),
+        releaseAs: resolveSetting(config, "releaseAs"),
       });
 
       if (pullRequestNumber !== undefined) {

@@ -134,6 +134,11 @@ export function resetShiprigCheck() {
 const SEMVER =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 
+/** Whether version is strict semver (see SEMVER). */
+export function isSemver(version: string): boolean {
+  return SEMVER.test(version);
+}
+
 /**
  * Whether version (x.y.z, maybe with a prerelease) is at least min (x.y.z).
  * A prerelease of min counts as below it, as semver orders them.

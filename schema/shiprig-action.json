@@ -50,6 +50,14 @@
       "pattern": "\\S",
       "description": "A label on the version PR that stops the action updating its branch, for hand edits (input hold-label). Default: release:hold."
     },
+    "releaseAs": {
+      "type": "object",
+      "description": "Release packages at exact versions: package name to version, e.g. { \"my-lib\": \"2.0.0\" } (release-please's release-as). Applied while the package is releasing and below the version; skipped once it's reached, and in pre mode. File only; not with a custom version-script.",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+      }
+    },
     "pushWithGitCli": {
       "type": "boolean",
       "description": "Push with the Git CLI instead of the GitHub API (input push-with-git-cli). Default: false."
