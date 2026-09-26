@@ -91,6 +91,11 @@ publish --from-pack-dir` (shiprig 1.21.0), so the build → pack → publish
   mode skips `chore(deps)`, `chore(release)` and release commits, as
   changelogen does (#490); commit-sourced changeset IDs can't collide (#491);
   an ignored package no longer rewrites its dependents' ranges (#487).
+- **Single-quoted package names and a dependency-only 🩹 Fixes section**
+  (rigsmith/rigsmith#494, #495; found by the 1.22.0 stability check).
+  Changeset frontmatter is read as the YAML @changesets reads, so
+  `'@acme/lib': patch` works; and a typed entry lists its released
+  dependencies under 🌊 Dependencies rather than as a lone Fixes line.
 - **Tight test timeouts** (#35). Tests that run real git and shiprig
   processes get a 20-second budget instead of vitest's 5-second default.
 - **5. Release-As (D)** (unreleased). `releaseAs` in `shiprig-action.jsonc`
@@ -164,17 +169,6 @@ needs, and `changerig init` offers it on a GitHub repository
 how to switch).
 
 ## Later
-
-### Smaller follow-ups
-
-- **Single-quoted package names in changesets.** changerig rejects
-  `'@acme/lib': patch` in a changeset's frontmatter; it's valid YAML and
-  @changesets accepts it (double quotes work). Found by the stability check
-  in a real repo; an engine fix.
-- **A dependency-only 🩹 Fixes section.** In an entry with typed changes,
-  "Updated dependencies" joins the `fix` group's section, so a package with
-  only 🚀 Enhancements and a dependency bump shows a 🩹 Fixes section holding
-  just that line. Cosmetic; a dedicated dependencies section is one option.
 
 ### Not ours
 
