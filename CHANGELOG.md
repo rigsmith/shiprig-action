@@ -1,5 +1,16 @@
 # shiprig-action
 
+## 0.6.0
+
+### Minor Changes
+
+- [#26](https://github.com/rigsmith/shiprig-action/pull/26) [`e16a143`](https://github.com/rigsmith/shiprig-action/commit/e16a143) Thanks [@JohnCampionJr](https://github.com/JohnCampionJr)! - A `release:hold` label on the version PR stops the action from updating its branch, so it can be edited by hand (`hold-label` / `holdLabel` names another label). Every run writes what it did to the job summary: the plan and the version PR, what was published and tagged, or why nothing happened. And a release from conventional commits, which consumes no changesets, now gets "released in" comments too, on the pull requests its changelog sections reference.
+- [#28](https://github.com/rigsmith/shiprig-action/pull/28) [`3346a85`](https://github.com/rigsmith/shiprig-action/commit/3346a85) Thanks [@JohnCampionJr](https://github.com/JohnCampionJr)! - The `pr-status` sub-action runs on shiprig: its comment shows each package's new version and a changelog preview of the pull request's own entries, in any ecosystem shiprig supports. It no longer needs `@changesets/cli`.
+- [#30](https://github.com/rigsmith/shiprig-action/pull/30) [`a943cc3`](https://github.com/rigsmith/shiprig-action/commit/a943cc3) Thanks [@JohnCampionJr](https://github.com/JohnCampionJr)! - `pr-status` previews with `shiprig version --changelog --since`, so a repository that also versions from conventional commits gets the PR's plan and changelog preview too, scoped to the PR's own commits and changesets, instead of a note. A PR that releases from its commits alone gets a "Release detected" comment.
+- [#36](https://github.com/rigsmith/shiprig-action/pull/36) [`c746223`](https://github.com/rigsmith/shiprig-action/commit/c746223) Thanks [@JohnCampionJr](https://github.com/JohnCampionJr)! - pr-status warns about packages a PR changes that nothing in it releases. The comment names them under **Changed but not released**, the run gets a warning annotation, and the new `unreleased-packages` output lists them. A package named in one of the PR's changesets, `none` included, counts as decided. It's a warning only, and never fails the job.
+- [#29](https://github.com/rigsmith/shiprig-action/pull/29) [`d3ba629`](https://github.com/rigsmith/shiprig-action/commit/d3ba629) Thanks [@JohnCampionJr](https://github.com/JohnCampionJr)! - shiprig-action now needs shiprig 1.21.0 or later, and checks for it before doing anything: an older shiprig fails with the minimum named, instead of partway through with a missing-command error. Update the job's shiprig install to 1.21.0.
+- [#31](https://github.com/rigsmith/shiprig-action/pull/31) [`5ff3016`](https://github.com/rigsmith/shiprig-action/commit/5ff3016) Thanks [@JohnCampionJr](https://github.com/JohnCampionJr)! - The `select-mode`, `pack` and `publish` sub-actions run on shiprig: `select-mode` plans with `shiprig publish-plan`, `pack` builds with `shiprig pack`, and `publish` takes `pack-dir-artifact-id` and publishes exactly the packed files with `shiprig publish --from-pack-dir`, building nothing. The build → pack → publish job split now works beyond npm (NuGet too; cargo publishes from source, so it's refused at pack). The action no longer depends on `@changesets/cli`.
+
 ## 0.5.0
 
 ### Minor Changes
