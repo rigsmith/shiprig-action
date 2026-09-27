@@ -1,0 +1,32 @@
+src/run.test.ts
+  s_505a2cfce9114c::t_00e5a6c22fd297 1275-1284,1312,1321-1329
+schema/shiprig-action.json
+  s_505a2cfce9114c::t_8b2fd5a9568acf 55
+src/index.ts
+  s_505a2cfce9114c::t_8b2fd5a9568acf 13,173,198-202
+src/summary.test.ts
+  s_505a2cfce9114c::t_00e5a6c22fd297 9,21-47
+src/config.test.ts
+  s_505a2cfce9114c::t_00e5a6c22fd297 282-299
+src/summary.ts
+  s_505a2cfce9114c::t_8b2fd5a9568acf 3-4,33-56
+src/run.ts
+  s_505a2cfce9114c::t_6d9b502bfbf7b5 576,626
+  s_505a2cfce9114c::t_8b2fd5a9568acf 382-384,387-389,477,485-491,743-752,761
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "604504c4a5eac6b5ef5b3bc4842706ba6a7f0819",
+  "prompts": {},
+  "sessions": {
+    "s_505a2cfce9114c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26f83a80-3cb9-404d-829c-6b4925947f16",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "John Campion Jr <john@brightshore.io>"
+    }
+  }
+}
