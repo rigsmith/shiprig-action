@@ -6,7 +6,7 @@ import {
   planSummary,
   publishedSummary,
   reasonSummary,
-  withOverrides,
+  withFinalVersions,
   writeSummary,
 } from "./summary.ts";
 
@@ -18,7 +18,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe("withOverrides", () => {
+describe("withFinalVersions", () => {
   it("shows a releaseAs package at its release version and the bump it made", () => {
     const planned = [
       { name: "a", type: "patch", newVersion: "1.2.4" },
@@ -26,24 +26,25 @@ describe("withOverrides", () => {
       { name: "c", type: "patch", newVersion: "1.0.1" },
     ];
     expect(
-      withOverrides(planned, [
+      withFinalVersions(planned, [
         { name: "a", from: "1.2.3", to: "2.0.0" },
         { name: "b", from: "0.3.0", to: "1.0.0-rc.1" },
+        { name: "c", from: "1.0.0", to: "1.0.1" },
       ]),
     ).toEqual([
       // A patch released at 2.0.0 is a major.
       { name: "a", type: "major", newVersion: "2.0.0" },
       // A prerelease of the next major is still a major move.
       { name: "b", type: "major", newVersion: "1.0.0-rc.1" },
-      // No override: the plan as it was.
+      // Released as planned: the plan as it was.
       { name: "c", type: "patch", newVersion: "1.0.1" },
     ]);
   });
 
-  it("leaves the plan alone with no overrides", () => {
+  it("leaves the plan alone with no versions", () => {
     const planned = [{ name: "a", type: "minor", newVersion: "1.1.0" }];
-    expect(withOverrides(planned, undefined)).toEqual(planned);
-    expect(withOverrides(planned, [])).toEqual(planned);
+    expect(withFinalVersions(planned, undefined)).toEqual(planned);
+    expect(withFinalVersions(planned, [])).toEqual(planned);
   });
 });
 

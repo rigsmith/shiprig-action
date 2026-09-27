@@ -379,13 +379,14 @@ type RunVersionResult = {
   pullRequestNumber?: number;
   // Why the version PR was left alone, when it was.
   skipped?: "stale" | "held";
-  // The releaseAs overrides this run passed: the job summary shows these
-  // versions rather than the plan's, which was read before they applied.
-  overrides?: ReleaseOverride[];
+  // Every package this run versioned, from and to. The job summary shows
+  // these rather than the plan's, which was read before the run: releaseAs
+  // moves the named package and any sharing its version file.
+  versions?: VersionChange[];
 };
 
-/** A package released at a releaseAs version, from its version before. */
-export type ReleaseOverride = { name: string; from: string; to: string };
+/** A package this run versioned: its version before, and after. */
+export type VersionChange = { name: string; from: string; to: string };
 
 export async function runVersion({
   script,
@@ -474,7 +475,6 @@ export async function runVersion({
   );
 
   const env = { ...process.env, GITHUB_TOKEN: github.getToken() };
-  const overrides: ReleaseOverride[] = [];
 
   if (script) {
     await exec(script, undefined, { cwd, env });
@@ -482,13 +482,6 @@ export async function runVersion({
     const args = ["version", "--yes"];
     for (const spec of releaseAsArgs(releaseAs, packagesBefore, preState)) {
       args.push("--release-as", spec);
-      const at = spec.lastIndexOf("=");
-      const name = spec.slice(0, at);
-      overrides.push({
-        name,
-        from: packagesBefore.find((p) => p.name === name)?.version ?? "",
-        to: spec.slice(at + 1),
-      });
     }
     await execShiprig(args, { cwd, env });
   }
@@ -496,6 +489,11 @@ export async function runVersion({
   let changedPackages = (await listPackages(cwd)).filter(
     (p) => versionsBefore.get(`${p.ecosystem}:${p.dir}`) !== p.version,
   );
+  const versions: VersionChange[] = changedPackages.map((p) => ({
+    name: p.name,
+    from: versionsBefore.get(`${p.ecosystem}:${p.dir}`) ?? "",
+    to: p.version,
+  }));
 
   // A title or message the user set keeps upstream's prerelease suffix. The
   // default names the versions instead, which already carry the tag
@@ -573,7 +571,7 @@ export async function runVersion({
 
     return {
       pullRequestNumber: newPullRequest.number,
-      ...(overrides.length > 0 && { overrides }),
+      versions,
     };
   } else {
     const [pullRequest] = existingPullRequests.data;
@@ -623,7 +621,7 @@ export async function runVersion({
 
     return {
       pullRequestNumber: pullRequest.number,
-      ...(overrides.length > 0 && { overrides }),
+      versions,
     };
   }
 }

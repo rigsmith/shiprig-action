@@ -512,7 +512,7 @@ describe("version", () => {
       branch: "main",
     });
 
-    expect(result).toEqual({ pullRequestNumber: 123 });
+    expect(result.pullRequestNumber).toBe(123);
     expect(mockedGithubMethods.git.getRef).toHaveBeenCalledTimes(2);
     for (const [args] of mockedGithubMethods.git.getRef.mock.calls) {
       expect(args).toMatchObject({ ref: "heads/some-branch" });
@@ -968,7 +968,7 @@ describe("polyglot", () => {
 
     const result = await runVersion({ github: createGithub(cwd), cwd });
 
-    expect(result).toEqual({ pullRequestNumber: 7 });
+    expect(result.pullRequestNumber).toBe(7);
     // Two packages at different versions: each named, in the title and the
     // commit alike.
     const title = "chore: release crate-b@0.3.1, pkg-a@1.1.0";
@@ -1318,15 +1318,65 @@ describe("releaseAs", () => {
     const title = mockedGithubMethods.pulls.create.mock.calls[0][0].title;
     expect(title).toContain("3.0.0");
     expect(title).toContain("1.1.0"); // pkg-b keeps its computed minor
-    // The job summary is told what the override did, since the plan it was
-    // given was read before the override applied.
-    expect(result.overrides).toEqual([
-      {
-        name: "changesets-dev-simple-project-pkg-a",
-        from: "1.0.0",
-        to: "3.0.0",
-      },
-    ]);
+    // The job summary is told every version the run wrote, since the plan
+    // it was given was read before the override applied.
+    expect(result.versions).toEqual(
+      expect.arrayContaining([
+        {
+          name: "changesets-dev-simple-project-pkg-a",
+          from: "1.0.0",
+          to: "3.0.0",
+        },
+        {
+          name: "changesets-dev-simple-project-pkg-b",
+          from: "1.0.0",
+          to: "1.1.0",
+        },
+      ]),
+    );
+  });
+
+  it("reports packages that share a version file with the override", async () => {
+    // A and B take their version from one Directory.Build.props.
+    const csproj =
+      '<Project Sdk="Microsoft.NET.Sdk">\n  <PropertyGroup>\n    <TargetFramework>net8.0</TargetFramework>\n  </PropertyGroup>\n</Project>\n';
+    await using fixture = await gitdir({
+      ".changeset/config.json": JSON.stringify({}),
+      "Directory.Build.props":
+        "<Project>\n  <PropertyGroup>\n    <Version>1.0.0</Version>\n  </PropertyGroup>\n</Project>\n",
+      "A/A.csproj": csproj,
+      "B/B.csproj": csproj,
+    });
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    mockedGithubMethods.pulls.list.mockImplementation(() => ({ data: [] }));
+    mockedGithubMethods.pulls.create.mockImplementationOnce(() => ({
+      data: { number: 123 },
+    }));
+    await writeChangesets(
+      [
+        {
+          releases: [{ name: "A", type: "patch" }],
+          summary: "Fix",
+        },
+      ],
+      cwd,
+    );
+
+    const result = await runVersion({
+      github: createGithub(cwd),
+      cwd,
+      releaseAs: { A: "2.0.0" },
+    });
+
+    // B was never named, but the shared file moved it with A: the summary
+    // needs its version too, not the patch the plan read before the run.
+    expect(result.versions).toEqual(
+      expect.arrayContaining([
+        { name: "A", from: "1.0.0", to: "2.0.0" },
+        { name: "B", from: "1.0.0", to: "2.0.0" },
+      ]),
+    );
   });
 
   it("refuses releaseAs alongside a custom version script", async () => {

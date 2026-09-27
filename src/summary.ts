@@ -1,7 +1,7 @@
 import * as core from "@actions/core";
 import { context } from "@actions/github";
 import semver from "semver";
-import type { ReleaseOverride } from "./run.ts";
+import type { VersionChange } from "./run.ts";
 import type { PlannedRelease } from "./shiprig.ts";
 
 // The run's job summary (GITHUB_STEP_SUMMARY): what this run did, readable on
@@ -31,18 +31,19 @@ function prLink(serverUrl: string, pr: number): string {
 }
 
 /**
- * The plan with each releaseAs override applied: the version it was released
- * at, and the bump that version is from the one before (a patch released at
- * 2.0.0 is a major), as shiprig labels it.
+ * The plan with the versions the run actually wrote: where one differs from
+ * the plan (a releaseAs override, and any package sharing its version file),
+ * the version it was released at and the bump that version is from the one
+ * before (a patch released at 2.0.0 is a major), as shiprig labels it.
  */
-export function withOverrides(
+export function withFinalVersions(
   releases: PlannedRelease[],
-  overrides: ReleaseOverride[] = [],
+  versions: VersionChange[] = [],
 ): PlannedRelease[] {
-  const byName = new Map(overrides.map((o) => [o.name, o]));
+  const byName = new Map(versions.map((v) => [v.name, v]));
   return releases.map((r) => {
     const o = byName.get(r.name);
-    if (!o) return r;
+    if (!o || o.to === r.newVersion) return r;
     const diff =
       semver.valid(o.from) && semver.valid(o.to)
         ? semver.diff(o.from, o.to)
