@@ -1479,6 +1479,11 @@ describe("separatePullRequests", () => {
     expect(created[1].title).not.toContain("1.1.0");
     expect(result.pullRequestNumbers).toEqual([11, 12]);
     expect(result.pullRequestNumber).toBe(11);
+    // The summary covers every group's versions, not just the last run's.
+    expect(result.versions).toEqual([
+      { name: "@acme/a", from: "1.0.0", to: "1.1.0" },
+      { name: "b", from: "1.0.0", to: "1.0.1" },
+    ]);
     expect(mockedGithubMethods.pulls.update).not.toHaveBeenCalled();
     // The first group's new changelog didn't follow into the second's branch.
     await expect(
