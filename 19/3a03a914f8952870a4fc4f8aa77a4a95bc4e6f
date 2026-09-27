@@ -1,0 +1,9 @@
+src/run.test.ts
+  ai_agent 1250,1259-1260
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "193a03a914f8952870a4fc4f8aa77a4a95bc4e6f",
+  "prompts": {}
+}
