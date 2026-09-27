@@ -10,11 +10,11 @@ import {
   type ExecOutput,
 } from "@actions/exec";
 import { context } from "@actions/github";
+import semver from "semver";
 import type { GitHub } from "./github.ts";
 import type { Octokit } from "./octokit.ts";
 import { commentReleasedPrs as commentReleasedPrsOn } from "./releasedComments.ts";
 import {
-  atLeast,
   execShiprig,
   getExecOutputShiprig,
   listPackages,
@@ -739,7 +739,12 @@ export function releaseAsArgs(
         `releaseAs names ${name}, which isn't a package in this workspace.`,
       );
     }
-    if (atLeast(pkg.version, version)) {
+    // A full semver comparison: a target with a prerelease or build suffix
+    // (2.0.0-rc.1, 2.0.0+build.5) is compared whole, so a package already
+    // past it isn't handed an override for a version behind it. A current
+    // version that isn't semver can't be compared, so the entry still goes to
+    // shiprig, which says what's wrong with it.
+    if (semver.valid(pkg.version) && semver.gte(pkg.version, version)) {
       core.info(
         `releaseAs: ${name} is already ${pkg.version}, at or past ${version}; nothing to do (remove the entry when you like).`,
       );

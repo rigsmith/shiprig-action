@@ -131,7 +131,8 @@ export function resetShiprigCheck() {
  * A semver version, strictly: no leading zeros, no empty prerelease or build
  * part. Anything else fails the check rather than being read generously.
  */
-const SEMVER =
+// Exported so the published schema can be held to the same pattern.
+export const SEMVER =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 
 /** Whether version is strict semver (see SEMVER). */

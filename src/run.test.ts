@@ -1237,6 +1237,30 @@ describe("releaseAs", () => {
     ).toEqual([]);
   });
 
+  // Compared as whole versions: a prerelease sorts below its release, and
+  // build metadata doesn't count.
+  it("compares a target with a prerelease or build suffix as a whole version", () => {
+    expect(
+      releaseAsArgs(
+        {
+          released: "2.0.0-rc.1",
+          below: "2.0.0-rc.1",
+          built: "2.0.0+build.5",
+          behind: "2.0.0+build.5",
+        },
+        [
+          // Already at 2.0.0, which is past 2.0.0-rc.1: nothing to do.
+          pkg("released", "2.0.0", "patch"),
+          pkg("below", "1.9.0", "minor"),
+          // 2.0.0+build.5 is 2.0.0: already there.
+          pkg("built", "2.0.0", "patch"),
+          pkg("behind", "1.9.0", "minor"),
+        ],
+        undefined,
+      ),
+    ).toEqual(["below=2.0.0-rc.1", "behind=2.0.0+build.5"]);
+  });
+
   it("waits out a prerelease", () => {
     expect(
       releaseAsArgs({ a: "2.0.0" }, [pkg("a", "1.0.0", "minor")], {

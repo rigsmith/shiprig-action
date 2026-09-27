@@ -55,7 +55,7 @@
       "description": "Release packages at exact versions: package name to version, e.g. { \"my-lib\": \"2.0.0\" } (release-please's release-as). Applied while the package is releasing and below the version; skipped once it's reached, and in pre mode. File only; not with a custom version-script.",
       "additionalProperties": {
         "type": "string",
-        "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+        "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*))*)?(\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
       }
     },
     "pushWithGitCli": {

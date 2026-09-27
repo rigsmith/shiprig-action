@@ -8,6 +8,7 @@ import {
   resolveSetting,
   stripJsonc,
 } from "./config.ts";
+import { isSemver, SEMVER } from "./shiprig.ts";
 import { gitdir } from "./test-utils.ts";
 
 afterEach(() => {
@@ -250,5 +251,32 @@ describe("schema/shiprig-action.json", () => {
       }
     }
     expect(schema.additionalProperties).toBe(false);
+  });
+
+  // An editor validating against the schema accepts exactly what the action
+  // does: "2.0.0-01" (a numeric prerelease identifier with a leading zero) is
+  // refused by both.
+  it("validates releaseAs versions with the action's own semver pattern", async () => {
+    const schema = JSON.parse(
+      await fs.readFile(
+        path.join(import.meta.dirname, "..", "schema", "shiprig-action.json"),
+        "utf8",
+      ),
+    );
+    const pattern = schema.properties.releaseAs.additionalProperties.pattern;
+    expect(pattern).toBe(SEMVER.source);
+    const schemaRe = new RegExp(pattern);
+    for (const v of [
+      "2.0.0",
+      "1.0.0-rc.1",
+      "2.0.0-0",
+      "2.0.0+build.5",
+      "2.0.0-01",
+      "01.0.0",
+      "2.0",
+    ]) {
+      expect(schemaRe.test(v), v).toBe(isSemver(v));
+    }
+    expect(isSemver("2.0.0-01")).toBe(false);
   });
 });
