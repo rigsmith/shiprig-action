@@ -1247,6 +1247,7 @@ describe("releaseAs", () => {
           below: "2.0.0-rc.1",
           built: "2.0.0+build.5",
           behind: "2.0.0+build.5",
+          laterRc: "2.0.0-rc.1",
         },
         [
           // Already at 2.0.0, which is past 2.0.0-rc.1: nothing to do.
@@ -1255,6 +1256,8 @@ describe("releaseAs", () => {
           // 2.0.0+build.5 is 2.0.0: already there.
           pkg("built", "2.0.0", "patch"),
           pkg("behind", "1.9.0", "minor"),
+          // Already on a later prerelease of the same release: past it.
+          pkg("laterRc", "2.0.0-rc.2", "patch"),
         ],
         undefined,
       ),
