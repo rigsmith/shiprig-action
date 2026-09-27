@@ -63,8 +63,8 @@ importers:
         specifier: ^1.0.1
         version: 1.0.1
       '@rigsmith/shiprig':
-        specifier: 1.21.0
-        version: 1.21.0
+        specifier: 1.22.0
+        version: 1.22.0
       '@tsconfig/node24':
         specifier: ^24.0.5
         version: 24.0.5
@@ -465,38 +465,38 @@ packages:
   '@protobuf-ts/runtime@2.11.1':
     resolution: {integrity: sha512-KuDaT1IfHkugM2pyz+FwiY80ejWrkH1pAtOBOZFuR6SXEFTsnb/jiQWQ1rCIrcKx2BtyxnxW6BWwsVSA/Ie+WQ==}
 
-  '@rigsmith/shiprig-darwin-arm64@1.21.0':
-    resolution: {integrity: sha512-C1vV231yFLG3G4kk5uElOPvzTafbdAMhgV2zjo3hCDZIs41JGEYs7tDHMqksZ5TfiPddMI8EmTjs58e90m/Dfg==}
+  '@rigsmith/shiprig-darwin-arm64@1.22.0':
+    resolution: {integrity: sha512-uBINguZCYN6YXBh0seLITf98Ei5DPrRllp25+bGtzpXSWEC1SufK8Uilg7mht7HppQ3bMpGrWFn9flEc7YGPag==}
     cpu: [arm64]
     os: [darwin]
 
-  '@rigsmith/shiprig-darwin-x64@1.21.0':
-    resolution: {integrity: sha512-AYCbrqqruUewbFv/64jzdJsdAjLa99GqJqasHIDJnqXJ4cTBWpWVrWc0CcmPOJxISDAWtFndu8t+IY5ZtrPqoQ==}
+  '@rigsmith/shiprig-darwin-x64@1.22.0':
+    resolution: {integrity: sha512-0b5JN5ptLwGsnAVnNOATduOQLoopq3RobLS97TbmKvg1jAjOpnTZ98V2Js1IKc2vH3rTeCjs1KzAKspa+yrHng==}
     cpu: [x64]
     os: [darwin]
 
-  '@rigsmith/shiprig-linux-arm64@1.21.0':
-    resolution: {integrity: sha512-FAbhMq4a0/tgtG9hISNXeGIMBbrXra1malk6K6s1azAtJlFOePwXAOlFfCoG6um84tZQIODEIWGE4wTIP+sLyg==}
+  '@rigsmith/shiprig-linux-arm64@1.22.0':
+    resolution: {integrity: sha512-MUaMphZCmmp1/dvCFJS+CJGU9dMFlStYHXVGajEHzgTRs392bfiQR61mr7XUc8lEGAdPlPYwRcPT0wQposYEcA==}
     cpu: [arm64]
     os: [linux]
 
-  '@rigsmith/shiprig-linux-x64@1.21.0':
-    resolution: {integrity: sha512-whxnQrgEjH/gStkN/5fzSkTVFGkj+fOugXn7S3t302caMEbpxnSL04CBRgb8n9l1Qnj0clo6F9f+8SPjCtSLQQ==}
+  '@rigsmith/shiprig-linux-x64@1.22.0':
+    resolution: {integrity: sha512-cgzkh9eFvSLASyN39ub4V8wXBwgKXHloQgZ4v/hFuTF0Qb4GfKC0Q4GYbYQPRYfEXoiR83Lg+wyHwoUQb39jAg==}
     cpu: [x64]
     os: [linux]
 
-  '@rigsmith/shiprig-win32-arm64@1.21.0':
-    resolution: {integrity: sha512-g9dkWtVMSEYR0n5WPj8XGirJ+53lk1HUYzPuRFc/HDBOeU9oeXFSRGgXISGRnbGz16Zwo0AVJ4sUic995l5dEQ==}
+  '@rigsmith/shiprig-win32-arm64@1.22.0':
+    resolution: {integrity: sha512-vgSTFye9mlNTQQC9nprr4xjkDxGhjY04Oh43HcanOVGuDu4DW/CzyrT4vAHQlp+vDQWFzmI+/u7ntwI8JqWerw==}
     cpu: [arm64]
     os: [win32]
 
-  '@rigsmith/shiprig-win32-x64@1.21.0':
-    resolution: {integrity: sha512-AxS3LahXX2W/f4p9/iHQJJiWbGy87WOnHG3l3PdcKaMd2Vm1NrU4a0VvPDOojuXf7HLMvYPzCokDsXwQ33h3xA==}
+  '@rigsmith/shiprig-win32-x64@1.22.0':
+    resolution: {integrity: sha512-KiltvEsiBny1+W5drBvA4piQF9pus87xJTcJPbV7//J7Jt1d8vzwDiR5zO3BVMwBNu2Xd0E5/NaSLFWI0k6bFg==}
     cpu: [x64]
     os: [win32]
 
-  '@rigsmith/shiprig@1.21.0':
-    resolution: {integrity: sha512-8iENMPl9uwxctMaFdVTRdEBcoKgeQQQX1rGX4Qf0Ktwc1/WwBR4kPRZDIq/Pluu1Z83JYdXv2Oi4LjxHnvHl+w==}
+  '@rigsmith/shiprig@1.22.0':
+    resolution: {integrity: sha512-f3iD+xxta3o/1lfXc4x7r+io+WHDpnFJmrRQSvHU7vfbxXys+0pWHwFp5pHmmCT4PS5CCYQkdItKdOv7soYbxQ==}
     hasBin: true
 
   '@rolldown/binding-android-arm-eabi@1.2.9':
@@ -1827,32 +1827,32 @@ snapshots:
 
   '@protobuf-ts/runtime@2.11.1': {}
 
-  '@rigsmith/shiprig-darwin-arm64@1.21.0':
+  '@rigsmith/shiprig-darwin-arm64@1.22.0':
     optional: true
 
-  '@rigsmith/shiprig-darwin-x64@1.21.0':
+  '@rigsmith/shiprig-darwin-x64@1.22.0':
     optional: true
 
-  '@rigsmith/shiprig-linux-arm64@1.21.0':
+  '@rigsmith/shiprig-linux-arm64@1.22.0':
     optional: true
 
-  '@rigsmith/shiprig-linux-x64@1.21.0':
+  '@rigsmith/shiprig-linux-x64@1.22.0':
     optional: true
 
-  '@rigsmith/shiprig-win32-arm64@1.21.0':
+  '@rigsmith/shiprig-win32-arm64@1.22.0':
     optional: true
 
-  '@rigsmith/shiprig-win32-x64@1.21.0':
+  '@rigsmith/shiprig-win32-x64@1.22.0':
     optional: true
 
-  '@rigsmith/shiprig@1.21.0':
+  '@rigsmith/shiprig@1.22.0':
     optionalDependencies:
-      '@rigsmith/shiprig-darwin-arm64': 1.21.0
-      '@rigsmith/shiprig-darwin-x64': 1.21.0
-      '@rigsmith/shiprig-linux-arm64': 1.21.0
-      '@rigsmith/shiprig-linux-x64': 1.21.0
-      '@rigsmith/shiprig-win32-arm64': 1.21.0
-      '@rigsmith/shiprig-win32-x64': 1.21.0
+      '@rigsmith/shiprig-darwin-arm64': 1.22.0
+      '@rigsmith/shiprig-darwin-x64': 1.22.0
+      '@rigsmith/shiprig-linux-arm64': 1.22.0
+      '@rigsmith/shiprig-linux-x64': 1.22.0
+      '@rigsmith/shiprig-win32-arm64': 1.22.0
+      '@rigsmith/shiprig-win32-x64': 1.22.0
 
   '@rolldown/binding-android-arm-eabi@1.2.9':
     optional: true
