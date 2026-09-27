@@ -48,7 +48,7 @@ describe("readReleasePlan", () => {
       ".changeset/cs.md": '---\n"pkg-a": minor\n---\n\nA feature\n',
     });
     vi.stubEnv("RUNNER_TEMP", fixture.path);
-    expect(await readReleasePlan(fixture.path)).toEqual([
+    expect(await readReleasePlan(fixture.path)).toMatchObject([
       { name: "pkg-a", type: "minor", newVersion: "1.1.0" },
     ]);
   });

@@ -280,7 +280,10 @@ export class GitHub {
     return data.some(
       (pr) =>
         pr.merged_at != null &&
-        pr.head.ref === versionBranch &&
+        // The version PR, or one of a version PR per group
+        // (changeset-release/<base>/<group>).
+        (pr.head.ref === versionBranch ||
+          pr.head.ref.startsWith(`${versionBranch}/`)) &&
         pr.head.repo?.full_name ===
           `${context.repo.owner}/${context.repo.repo}` &&
         pr.base.ref === base,
@@ -290,6 +293,16 @@ export class GitHub {
   async prepareBranch(branch: string) {
     await switchToMaybeExistingBranch(branch, { cwd: this.cwd });
     await reset(context.sha, { cwd: this.cwd });
+  }
+
+  /**
+   * Puts the working tree back at the run's commit, untracked files included
+   * (gitignored ones are left), so one version run's output doesn't reach
+   * the next: a version PR per group runs several in one checkout.
+   */
+  async resetToBase() {
+    await reset(context.sha, { cwd: this.cwd });
+    await exec("git", ["clean", "-fd"], { cwd: this.cwd });
   }
 
   async pushChanges({ branch, message }: { branch: string; message: string }) {

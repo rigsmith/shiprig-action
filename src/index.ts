@@ -170,22 +170,26 @@ async function main() {
       return;
     }
     case hasChangesets: {
-      const { pullRequestNumber, skipped, versions } = await runVersion({
-        script: getOptionalInput("version-script"),
-        github,
-        cwd,
-        prTitle: resolveSetting(config, "prTitle"),
-        commitMessage: resolveSetting(config, "commitMessage"),
-        hasPublishScript,
-        prDraft,
-        branch: prBaseBranch,
-        holdLabel: resolveSetting(config, "holdLabel"),
-        releaseAs: resolveSetting(config, "releaseAs"),
-      });
+      const { pullRequestNumber, pullRequestNumbers, skipped, versions } =
+        await runVersion({
+          script: getOptionalInput("version-script"),
+          github,
+          cwd,
+          prTitle: resolveSetting(config, "prTitle"),
+          commitMessage: resolveSetting(config, "commitMessage"),
+          hasPublishScript,
+          prDraft,
+          branch: prBaseBranch,
+          holdLabel: resolveSetting(config, "holdLabel"),
+          releaseAs: resolveSetting(config, "releaseAs"),
+          separatePullRequests:
+            resolveSetting(config, "separatePullRequests") ?? false,
+        });
 
       if (pullRequestNumber !== undefined) {
         core.setOutput("pr-number", String(pullRequestNumber));
       }
+      core.setOutput("pr-numbers", JSON.stringify(pullRequestNumbers ?? []));
       await writeSummary(
         skipped === "stale"
           ? reasonSummary(
@@ -193,12 +197,14 @@ async function main() {
             )
           : skipped === "held"
             ? reasonSummary(
-                `The version PR #${pullRequestNumber} is held by its label, so its branch was left alone.`,
+                (pullRequestNumbers ?? []).length > 1
+                  ? `Every version PR (${(pullRequestNumbers ?? []).map((n) => `#${n}`).join(", ")}) is held by its label, so their branches were left alone.`
+                  : `The version PR #${pullRequestNumber} is held by its label, so its branch was left alone.`,
               )
             : planSummary(
                 withFinalVersions(releases, versions),
                 github.serverUrl,
-                pullRequestNumber,
+                pullRequestNumbers,
               ),
       );
 

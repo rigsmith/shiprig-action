@@ -25,6 +25,7 @@ export type ActionConfig = {
   holdLabel?: string;
   // Package name → the exact version to release it at. File-only.
   releaseAs?: Record<string, string>;
+  separatePullRequests?: boolean;
 };
 
 // Each key, its type, and the input it stands in for.
@@ -41,6 +42,7 @@ export const CONFIG_KEYS = {
   holdLabel: { type: "string", input: "hold-label" },
   // A map has no single-line input form, so it's set in the file only.
   releaseAs: { type: "versions", input: null },
+  separatePullRequests: { type: "boolean", input: "separate-pull-requests" },
 } as const satisfies Record<
   keyof ActionConfig,
   | { type: "string" | "boolean" | readonly string[]; input: string }
