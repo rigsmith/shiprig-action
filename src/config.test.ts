@@ -279,4 +279,22 @@ describe("schema/shiprig-action.json", () => {
     }
     expect(isSemver("2.0.0-01")).toBe(false);
   });
+
+  // A blank package name, which the action refuses, the schema refuses too.
+  it("requires releaseAs package names to be non-blank", async () => {
+    const schema = JSON.parse(
+      await fs.readFile(
+        path.join(import.meta.dirname, "..", "schema", "shiprig-action.json"),
+        "utf8",
+      ),
+    );
+    const names = new RegExp(schema.properties.releaseAs.propertyNames.pattern);
+    for (const key of ["", " ", "\t"]) {
+      expect(names.test(key), JSON.stringify(key)).toBe(false);
+      expect(() =>
+        parseConfig(JSON.stringify({ releaseAs: { [key]: "2.0.0" } }), "f"),
+      ).toThrow();
+    }
+    expect(names.test("my-lib")).toBe(true);
+  });
 });

@@ -1272,6 +1272,16 @@ describe("releaseAs", () => {
     ).toEqual([]);
   });
 
+  // Prerelease or not: a typo would otherwise pass for the whole prerelease
+  // and only fail at the stable release.
+  it("refuses an unknown package during a prerelease too", () => {
+    expect(() =>
+      releaseAsArgs({ nope: "2.0.0" }, [pkg("a", "1.0.0", "minor")], {
+        tag: "next",
+      }),
+    ).toThrow("isn't a package in this workspace");
+  });
+
   it("refuses a package that isn't in the workspace", () => {
     expect(() => releaseAsArgs({ nope: "2.0.0" }, [], undefined)).toThrow(
       "isn't a package in this workspace",
@@ -1299,7 +1309,7 @@ describe("releaseAs", () => {
       cwd,
     );
 
-    await runVersion({
+    const result = await runVersion({
       github: createGithub(cwd),
       cwd,
       releaseAs: { "changesets-dev-simple-project-pkg-a": "3.0.0" },
@@ -1308,6 +1318,15 @@ describe("releaseAs", () => {
     const title = mockedGithubMethods.pulls.create.mock.calls[0][0].title;
     expect(title).toContain("3.0.0");
     expect(title).toContain("1.1.0"); // pkg-b keeps its computed minor
+    // The job summary is told what the override did, since the plan it was
+    // given was read before the override applied.
+    expect(result.overrides).toEqual([
+      {
+        name: "changesets-dev-simple-project-pkg-a",
+        from: "1.0.0",
+        to: "3.0.0",
+      },
+    ]);
   });
 
   it("refuses releaseAs alongside a custom version script", async () => {

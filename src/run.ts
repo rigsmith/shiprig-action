@@ -379,7 +379,13 @@ type RunVersionResult = {
   pullRequestNumber?: number;
   // Why the version PR was left alone, when it was.
   skipped?: "stale" | "held";
+  // The releaseAs overrides this run passed: the job summary shows these
+  // versions rather than the plan's, which was read before they applied.
+  overrides?: ReleaseOverride[];
 };
+
+/** A package released at a releaseAs version, from its version before. */
+export type ReleaseOverride = { name: string; from: string; to: string };
 
 export async function runVersion({
   script,
@@ -468,6 +474,7 @@ export async function runVersion({
   );
 
   const env = { ...process.env, GITHUB_TOKEN: github.getToken() };
+  const overrides: ReleaseOverride[] = [];
 
   if (script) {
     await exec(script, undefined, { cwd, env });
@@ -475,6 +482,13 @@ export async function runVersion({
     const args = ["version", "--yes"];
     for (const spec of releaseAsArgs(releaseAs, packagesBefore, preState)) {
       args.push("--release-as", spec);
+      const at = spec.lastIndexOf("=");
+      const name = spec.slice(0, at);
+      overrides.push({
+        name,
+        from: packagesBefore.find((p) => p.name === name)?.version ?? "",
+        to: spec.slice(at + 1),
+      });
     }
     await execShiprig(args, { cwd, env });
   }
@@ -559,6 +573,7 @@ export async function runVersion({
 
     return {
       pullRequestNumber: newPullRequest.number,
+      ...(overrides.length > 0 && { overrides }),
     };
   } else {
     const [pullRequest] = existingPullRequests.data;
@@ -608,6 +623,7 @@ export async function runVersion({
 
     return {
       pullRequestNumber: pullRequest.number,
+      ...(overrides.length > 0 && { overrides }),
     };
   }
 }
@@ -724,21 +740,25 @@ export function releaseAsArgs(
 ): string[] {
   const entries = Object.entries(releaseAs ?? {});
   if (entries.length === 0) return [];
+  // Every name is checked, prerelease or not: a typo shouldn't pass silently
+  // for as long as a prerelease lasts and only fail at the stable release.
+  const byName = new Map(packages.map((p) => [p.name, p]));
+  for (const [name] of entries) {
+    if (!byName.has(name)) {
+      throw new Error(
+        `releaseAs names ${name}, which isn't a package in this workspace.`,
+      );
+    }
+  }
   if (preState) {
     core.info(
       `releaseAs waits for a normal release: this is a prerelease (${preState.tag}).`,
     );
     return [];
   }
-  const byName = new Map(packages.map((p) => [p.name, p]));
   const args: string[] = [];
   for (const [name, version] of entries) {
-    const pkg = byName.get(name);
-    if (!pkg) {
-      throw new Error(
-        `releaseAs names ${name}, which isn't a package in this workspace.`,
-      );
-    }
+    const pkg = byName.get(name)!;
     // A full semver comparison: a target with a prerelease or build suffix
     // (2.0.0-rc.1, 2.0.0+build.5) is compared whole, so a package already
     // past it isn't handed an override for a version behind it. A current

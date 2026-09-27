@@ -1,5 +1,7 @@
 import * as core from "@actions/core";
 import { context } from "@actions/github";
+import semver from "semver";
+import type { ReleaseOverride } from "./run.ts";
 import type { PlannedRelease } from "./shiprig.ts";
 
 // The run's job summary (GITHUB_STEP_SUMMARY): what this run did, readable on
@@ -26,6 +28,32 @@ export async function writeSummary(markdown: string): Promise<void> {
 function prLink(serverUrl: string, pr: number): string {
   const { owner, repo } = context.repo;
   return `[#${pr}](${serverUrl}/${owner}/${repo}/pull/${pr})`;
+}
+
+/**
+ * The plan with each releaseAs override applied: the version it was released
+ * at, and the bump that version is from the one before (a patch released at
+ * 2.0.0 is a major), as shiprig labels it.
+ */
+export function withOverrides(
+  releases: PlannedRelease[],
+  overrides: ReleaseOverride[] = [],
+): PlannedRelease[] {
+  const byName = new Map(overrides.map((o) => [o.name, o]));
+  return releases.map((r) => {
+    const o = byName.get(r.name);
+    if (!o) return r;
+    const diff =
+      semver.valid(o.from) && semver.valid(o.to)
+        ? semver.diff(o.from, o.to)
+        : null;
+    const type = diff?.replace(/^pre(?=major|minor|patch)/, "") ?? r.type;
+    return {
+      ...r,
+      newVersion: o.to,
+      type: ["major", "minor", "patch"].includes(type) ? type : r.type,
+    };
+  });
 }
 
 /** The version path: what the version PR releases. */
