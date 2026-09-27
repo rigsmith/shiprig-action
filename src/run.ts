@@ -10,6 +10,7 @@ import {
   type ExecOutput,
 } from "@actions/exec";
 import { context } from "@actions/github";
+import semver from "semver";
 import type { GitHub } from "./github.ts";
 import type { Octokit } from "./octokit.ts";
 import { commentReleasedPrs as commentReleasedPrsOn } from "./releasedComments.ts";
@@ -369,6 +370,8 @@ type VersionOptions = {
   branch?: string;
   // A label on the version PR that freezes its branch, for hand edits.
   holdLabel?: string;
+  // Release packages at exact versions (`releaseAs` in shiprig-action.jsonc).
+  releaseAs?: Record<string, string>;
 };
 
 type RunVersionResult = {
@@ -376,7 +379,14 @@ type RunVersionResult = {
   pullRequestNumber?: number;
   // Why the version PR was left alone, when it was.
   skipped?: "stale" | "held";
+  // Every package this run versioned, from and to. The job summary shows
+  // these rather than the plan's, which was read before the run: releaseAs
+  // moves the named package and any sharing its version file.
+  versions?: VersionChange[];
 };
+
+/** A package this run versioned: its version before, and after. */
+export type VersionChange = { name: string; from: string; to: string };
 
 export async function runVersion({
   script,
@@ -389,7 +399,15 @@ export async function runVersion({
   branch = context.ref.replace("refs/heads/", ""),
   prDraft,
   holdLabel = "release:hold",
+  releaseAs,
 }: VersionOptions): Promise<RunVersionResult> {
+  // A custom version script decides versions itself; releaseAs can't reach it.
+  if (script && releaseAs && Object.keys(releaseAs).length > 0) {
+    throw new Error(
+      "`releaseAs` in shiprig-action.jsonc can't be combined with a custom version-script: " +
+        "the script runs its own version command. Pass `--release-as <package>=<version>` to shiprig in the script instead.",
+    );
+  }
   const { octokit } = github;
   let versionBranch = `changeset-release/${branch}`;
 
@@ -451,11 +469,9 @@ export async function runVersion({
 
   await github.prepareBranch(versionBranch);
 
+  const packagesBefore = await listPackages(cwd);
   const versionsBefore = new Map(
-    (await listPackages(cwd)).map((p) => [
-      `${p.ecosystem}:${p.dir}`,
-      p.version,
-    ]),
+    packagesBefore.map((p) => [`${p.ecosystem}:${p.dir}`, p.version]),
   );
 
   const env = { ...process.env, GITHUB_TOKEN: github.getToken() };
@@ -463,12 +479,22 @@ export async function runVersion({
   if (script) {
     await exec(script, undefined, { cwd, env });
   } else {
-    await execShiprig(["version", "--yes"], { cwd, env });
+    const args = ["version", "--yes"];
+    for (const spec of releaseAsArgs(releaseAs, packagesBefore, preState)) {
+      args.push("--release-as", spec);
+    }
+    await execShiprig(args, { cwd, env });
   }
 
   let changedPackages = (await listPackages(cwd)).filter(
     (p) => versionsBefore.get(`${p.ecosystem}:${p.dir}`) !== p.version,
   );
+  // Only packages that had a version before: one without has nothing to
+  // move from, and the summary would show a bump it can't know.
+  const versions: VersionChange[] = changedPackages.flatMap((p) => {
+    const from = versionsBefore.get(`${p.ecosystem}:${p.dir}`);
+    return from === undefined ? [] : [{ name: p.name, from, to: p.version }];
+  });
 
   // A title or message the user set keeps upstream's prerelease suffix. The
   // default names the versions instead, which already carry the tag
@@ -546,6 +572,7 @@ export async function runVersion({
 
     return {
       pullRequestNumber: newPullRequest.number,
+      versions,
     };
   } else {
     const [pullRequest] = existingPullRequests.data;
@@ -595,6 +622,7 @@ export async function runVersion({
 
     return {
       pullRequestNumber: pullRequest.number,
+      versions,
     };
   }
 }
@@ -694,4 +722,64 @@ export async function publishDecision({
       `Nothing to publish: this push isn't the merge of the version PR (${versionBranch}). ` +
       "To publish on every push, set publish-on: every-push; a workflow_dispatch run, if the workflow allows one, always publishes.",
   };
+}
+
+/**
+ * The `--release-as <package>=<version>` arguments for this version run:
+ * each `releaseAs` entry that still applies. One for a package that isn't
+ * releasing in this run, or that's already at or past the version, is
+ * skipped with a note, so an entry left in the config after its release
+ * doesn't fail every later push (release-please's release-as behaves the
+ * same). A prerelease sets its own version suffix, so nothing applies then.
+ */
+export function releaseAsArgs(
+  releaseAs: Record<string, string> | undefined,
+  packages: ShiprigPackage[],
+  preState: { tag: string } | undefined,
+): string[] {
+  const entries = Object.entries(releaseAs ?? {});
+  if (entries.length === 0) return [];
+  // Every name is checked, prerelease or not: a typo shouldn't pass silently
+  // for as long as a prerelease lasts and only fail at the stable release.
+  const byName = new Map(packages.map((p) => [p.name, p]));
+  for (const [name] of entries) {
+    if (!byName.has(name)) {
+      throw new Error(
+        `releaseAs names ${name}, which isn't a package in this workspace.`,
+      );
+    }
+  }
+  if (preState) {
+    core.info(
+      `releaseAs waits for a normal release: this is a prerelease (${preState.tag}).`,
+    );
+    return [];
+  }
+  const args: string[] = [];
+  for (const [name, version] of entries) {
+    const pkg = byName.get(name)!;
+    // A full semver comparison: a target with a prerelease or build suffix
+    // (2.0.0-rc.1, 2.0.0+build.5) is compared whole, so a package already
+    // past it isn't handed an override for a version behind it. A current
+    // version that isn't semver can't be compared, so the entry still goes to
+    // shiprig, which says what's wrong with it.
+    if (semver.valid(pkg.version) && semver.gte(pkg.version, version)) {
+      core.info(
+        `releaseAs: ${name} is already ${pkg.version}, at or past ${version}; nothing to do (remove the entry when you like).`,
+      );
+      continue;
+    }
+    const releasing =
+      pkg.bump !== undefined &&
+      pkg.bump !== "none" &&
+      pkg.nextVersion !== undefined;
+    if (!releasing) {
+      core.info(
+        `releaseAs: ${name} isn't releasing in this run; ${version} applies once a changeset or commit releases it.`,
+      );
+      continue;
+    }
+    args.push(`${name}=${version}`);
+  }
+  return args;
 }

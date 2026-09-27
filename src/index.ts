@@ -10,6 +10,7 @@ import {
 } from "./shiprig.ts";
 import {
   planSummary,
+  withFinalVersions,
   publishedSummary,
   reasonSummary,
   summaryWritten,
@@ -169,7 +170,7 @@ async function main() {
       return;
     }
     case hasChangesets: {
-      const { pullRequestNumber, skipped } = await runVersion({
+      const { pullRequestNumber, skipped, versions } = await runVersion({
         script: getOptionalInput("version-script"),
         github,
         cwd,
@@ -179,6 +180,7 @@ async function main() {
         prDraft,
         branch: prBaseBranch,
         holdLabel: resolveSetting(config, "holdLabel"),
+        releaseAs: resolveSetting(config, "releaseAs"),
       });
 
       if (pullRequestNumber !== undefined) {
@@ -193,7 +195,11 @@ async function main() {
             ? reasonSummary(
                 `The version PR #${pullRequestNumber} is held by its label, so its branch was left alone.`,
               )
-            : planSummary(releases, github.serverUrl, pullRequestNumber),
+            : planSummary(
+                withFinalVersions(releases, versions),
+                github.serverUrl,
+                pullRequestNumber,
+              ),
       );
 
       return;

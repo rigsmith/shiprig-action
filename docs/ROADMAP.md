@@ -64,44 +64,61 @@ version-pr-merge`, the default, publishes on the push that merges
   `release:hold` label on the version PR freezes its branch for hand edits;
   every run writes what it did to the job summary; a release from
   conventional commits credits the pull requests its changelog sections
-  reference. Per-package skip (one package waits while another ships) needs
-  shiprig to version only some packages, like canon's `changeset version
---ignore`, first.
-- **`pr-status` on shiprig, with a changelog preview** (unreleased). The PR
+  reference. Per-package skip (one package waits while another ships) needed
+  shiprig to version only some packages; `shiprig version --ignore` arrived
+  in shiprig 1.21.0 and item 6 builds on it.
+- **`pr-status` on shiprig, with a changelog preview** (v0.6.0). The PR
   status comment plans with `shiprig status --since <base>`, so it shows each
   package's new version in any ecosystem, and a collapsible preview of the
   changelog entries the PR adds (`shiprig version --changelog --since`). It
   no longer needs `@changesets/cli`. With commits as a versioning source, the
   plan and preview cover the PR's own commits too (shiprig 1.21.0).
 
-- **The split sub-actions on shiprig** (unreleased). `select-mode`, `pack`
+- **The split sub-actions on shiprig** (v0.6.0). `select-mode`, `pack`
   and `publish` run `shiprig publish-plan`, `shiprig pack` and `shiprig
 publish --from-pack-dir` (shiprig 1.21.0), so the build → pack → publish
   job split works in any ecosystem that can publish a prebuilt file (npm,
   NuGet). The action no longer depends on `@changesets/cli`.
+- **5. Release-As (D)** (unreleased). `releaseAs` in `shiprig-action.jsonc`
+  maps a package to the exact version to release it at, passed to shiprig
+  1.21.0's `version --release-as`. It applies while the package is releasing
+  and below the version, and is skipped once reached, so an entry can stay
+  in the file. Opt-in: without it, behaviour is canon's.
 
 ## Next
-
-Nothing in progress; the next pick comes from Later.
-
-## Later
-
-### 5. Non-interactive version override (D)
-
-shiprig's override prompt can't be answered in CI. Add a non-interactive form:
-a `Release-As`-style setting in `shiprig-action.jsonc`, a flag, or a field in a
-changeset. Opt-in, so default behaviour keeps matching canon.
 
 ### 6. A version PR per package (E)
 
 Let an app and a library release on different schedules (release-please's
-`separate-pull-requests`). Matters most in polyglot repos like tweed.
+`separate-pull-requests`). Matters most in polyglot repos like tweed. shiprig
+1.21.0's `version --ignore` lets one branch version some packages and leave
+the rest; packages that must move together (one changeset naming both, a
+dependency, a fixed or linked group) share a PR.
+
+## Later
 
 ### 8. Upstream issues
 
 File changesets issues or discussions for comparison items 3, 7, 8 and 9 below.
 A change to release decisions, like pre-1.0 behaviour (item 8), goes upstream
 first, since shiprig matches canon @changesets.
+
+### 9. A release record (comparison item 2)
+
+release-please records the last release commit; shiprig only records
+versions it didn't stamp (`.changeset/versions.json`).
+
+### 10. Commit and PR links by default (comparison item 6)
+
+Supported through `@changesets/changelog-github`, but not the default.
+
+### Smaller follow-ups
+
+- **Authenticated NuGet feeds in `publish-plan`.** shiprig's registry check
+  sends no credentials, so a feed that needs them answers 401 and the plan
+  fails (loudly). Asking with the publish credentials is a shiprig change.
+- **Tight test timeouts.** A few tests that spawn a stand-in shiprig run under
+  vitest's 5-second default and time out on a heavily loaded machine.
 
 ## How the two upstream tools differ
 
@@ -136,7 +153,7 @@ stand.
 | 4   | Tags and GitHub Releases without a registry | The tag and GitHub Release are the release | Via `changeset publish` / `git-tag`        | **Covered**: `shiprig tag`, and the action's GitHub releases                       |
 | 5   | Changelog sections by type                  | `changelog-sections`                       | Major/Minor/Patch only                     | **Covered**: groups by conventional type                                           |
 | 6   | Commit and PR links by default              | On by default                              | Needs `changelog-github` and a token       | Partial: supported, not the default                                                |
-| 7   | Forcing a version                           | `Release-As:`                              | None                                       | Partial: interactive prompt only; item 5                                           |
+| 7   | Forcing a version                           | `Release-As:`                              | None                                       | **Covered**: `releaseAs` (shiprig 1.21.0 `--release-as`)                           |
 | 8   | Pre-1.0 behaviour                           | `bump-minor-pre-major`                     | A major on 0.x goes to 1.0.0               | **Open**, upstream first                                                           |
 | 9   | Separate or grouped release PRs             | `separate-pull-requests`                   | One PR for everything                      | **Open**: item 6                                                                   |
 | 10  | A fallback when authors forget              | Every conventional commit counts           | The bot only comments                      | Partial: `versioning.source: both`                                                 |

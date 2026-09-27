@@ -6,6 +6,7 @@ import {
   planSummary,
   publishedSummary,
   reasonSummary,
+  withFinalVersions,
   writeSummary,
 } from "./summary.ts";
 
@@ -15,6 +16,49 @@ vi.mock("@actions/github", () => ({
 
 afterEach(() => {
   vi.unstubAllEnvs();
+});
+
+describe("withFinalVersions", () => {
+  it("shows a releaseAs package at its release version and the bump it made", () => {
+    const planned = [
+      { name: "a", type: "patch", newVersion: "1.2.4" },
+      { name: "b", type: "minor", newVersion: "0.4.0" },
+      { name: "c", type: "patch", newVersion: "1.0.1" },
+    ];
+    expect(
+      withFinalVersions(planned, [
+        { name: "a", from: "1.2.3", to: "2.0.0" },
+        { name: "b", from: "0.3.0", to: "1.0.0-rc.1" },
+        { name: "c", from: "1.0.0", to: "1.0.1" },
+      ]),
+    ).toEqual([
+      // A patch released at 2.0.0 is a major.
+      { name: "a", type: "major", newVersion: "2.0.0" },
+      // A prerelease of the next major is still a major move.
+      { name: "b", type: "major", newVersion: "1.0.0-rc.1" },
+      // Released as planned: the plan as it was.
+      { name: "c", type: "patch", newVersion: "1.0.1" },
+    ]);
+  });
+
+  it("adds a package the run moved that the plan never named", () => {
+    const planned = [{ name: "a", type: "patch", newVersion: "2.0.0" }];
+    expect(
+      withFinalVersions(planned, [
+        { name: "a", from: "1.2.3", to: "2.0.0" },
+        { name: "b", from: "1.2.3", to: "2.0.0" },
+      ]),
+    ).toEqual([
+      { name: "a", type: "patch", newVersion: "2.0.0" },
+      { name: "b", type: "major", newVersion: "2.0.0" },
+    ]);
+  });
+
+  it("leaves the plan alone with no versions", () => {
+    const planned = [{ name: "a", type: "minor", newVersion: "1.1.0" }];
+    expect(withFinalVersions(planned, undefined)).toEqual(planned);
+    expect(withFinalVersions(planned, [])).toEqual(planned);
+  });
 });
 
 describe("summaries", () => {

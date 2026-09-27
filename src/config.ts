@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import * as core from "@actions/core";
 import { getExecOutput } from "@actions/exec";
-import { workspaceRoot } from "./shiprig.ts";
+import { isSemver, workspaceRoot } from "./shiprig.ts";
 
 // shiprig-action.jsonc (or .json): the action's settings in a committed file,
 // as release-please keeps its settings in release-please-config.json. It holds
@@ -23,6 +23,8 @@ export type ActionConfig = {
   pushWithGitCli?: boolean;
   commentReleasedPrs?: boolean;
   holdLabel?: string;
+  // Package name → the exact version to release it at. File-only.
+  releaseAs?: Record<string, string>;
 };
 
 // Each key, its type, and the input it stands in for.
@@ -37,9 +39,12 @@ export const CONFIG_KEYS = {
   pushWithGitCli: { type: "boolean", input: "push-with-git-cli" },
   commentReleasedPrs: { type: "boolean", input: "comment-released-prs" },
   holdLabel: { type: "string", input: "hold-label" },
+  // A map has no single-line input form, so it's set in the file only.
+  releaseAs: { type: "versions", input: null },
 } as const satisfies Record<
   keyof ActionConfig,
-  { type: "string" | "boolean" | readonly string[]; input: string }
+  | { type: "string" | "boolean" | readonly string[]; input: string }
+  | { type: "versions"; input: null }
 >;
 
 /**
@@ -129,6 +134,10 @@ export function parseConfig(text: string, file: string): ActionConfig {
       );
     }
     const type = spec.type;
+    if (type === "versions") {
+      config[key] = parseVersions(value, key, file);
+      continue;
+    }
     const ok = Array.isArray(type)
       ? typeof value === "string" && type.includes(value)
       : type === "string"
@@ -222,11 +231,39 @@ function skipSpace(text: string, i: number): number {
  * file's, else undefined for the caller's own default. Boolean inputs take
  * YAML's true/false spellings, as `core.getBooleanInput` does.
  */
+// A `versions` value: an object from package name to a strict semver
+// version.
+function parseVersions(
+  value: unknown,
+  key: string,
+  file: string,
+): Record<string, string> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(
+      `${file}: "${key}" must be an object of package names to versions, not ${JSON.stringify(value)}`,
+    );
+  }
+  const out: Record<string, string> = {};
+  for (const [name, version] of Object.entries(value)) {
+    if (name.trim() === "") {
+      throw new Error(`${file}: "${key}" has an empty package name`);
+    }
+    if (typeof version !== "string" || !isSemver(version)) {
+      throw new Error(
+        `${file}: "${key}"."${name}" must be a semver version like "2.0.0", not ${JSON.stringify(version)}`,
+      );
+    }
+    out[name] = version;
+  }
+  return out;
+}
+
 export function resolveSetting<K extends keyof ActionConfig>(
   config: ActionConfig,
   key: K,
 ): ActionConfig[K] | undefined {
   const spec = CONFIG_KEYS[key];
+  if (spec.input === null) return config[key];
   const input = core.getInput(spec.input);
   if (input !== "") {
     if (spec.type === "boolean") {

@@ -1,5 +1,7 @@
 import * as core from "@actions/core";
 import { context } from "@actions/github";
+import semver from "semver";
+import type { VersionChange } from "./run.ts";
 import type { PlannedRelease } from "./shiprig.ts";
 
 // The run's job summary (GITHUB_STEP_SUMMARY): what this run did, readable on
@@ -26,6 +28,44 @@ export async function writeSummary(markdown: string): Promise<void> {
 function prLink(serverUrl: string, pr: number): string {
   const { owner, repo } = context.repo;
   return `[#${pr}](${serverUrl}/${owner}/${repo}/pull/${pr})`;
+}
+
+/**
+ * The plan with the versions the run actually wrote: where one differs from
+ * the plan (a releaseAs override, and any package sharing its version file),
+ * the version it was released at and the bump that version is from the one
+ * before (a patch released at 2.0.0 is a major), as shiprig labels it. A
+ * package the run moved that the plan never named is added the same way.
+ */
+export function withFinalVersions(
+  releases: PlannedRelease[],
+  versions: VersionChange[] = [],
+): PlannedRelease[] {
+  const byName = new Map(versions.map((v) => [v.name, v]));
+  const planned = releases.map((r) => {
+    const o = byName.get(r.name);
+    if (!o || o.to === r.newVersion) return r;
+    return { ...r, newVersion: o.to, type: bumpType(o, r.type) };
+  });
+  const named = new Set(releases.map((r) => r.name));
+  const unplanned = versions
+    .filter((v) => !named.has(v.name))
+    .map((v) => ({
+      name: v.name,
+      type: bumpType(v, "patch"),
+      newVersion: v.to,
+    }));
+  return [...planned, ...unplanned];
+}
+
+/** The bump from one version to the next, as shiprig labels it. */
+function bumpType(v: VersionChange, fallback: string): string {
+  const diff =
+    semver.valid(v.from) && semver.valid(v.to)
+      ? semver.diff(v.from, v.to)
+      : null;
+  const type = diff?.replace(/^pre(?=major|minor|patch)/, "") ?? fallback;
+  return ["major", "minor", "patch"].includes(type) ? type : fallback;
 }
 
 /** The version path: what the version PR releases. */
