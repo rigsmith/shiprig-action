@@ -1,0 +1,24 @@
+docs/ROADMAP.md
+  s_505a2cfce9114c::t_a895f3a23efb3f 67-70,77,96-100,129,167,184,117,131,134,146,149,111,178,180
+  s_505a2cfce9114c::t_cae7d95b118ccb 113,169,86-95,104-110,150,152-156,158,160-164,166,179,181-183,217,219
+  s_505a2cfce9114c::t_d1c62279407f6a 151,130,132-133,135-145,147-148,210-216,218,220-222
+  s_505a2cfce9114c::t_327a73e617ceac 112,115-116,119-122,124-128
+  s_505a2cfce9114c::t_9628464f991344 57,118,123
+  ai_agent 82-85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "02bb87e13c2241be6d17e8811085b1e2fa5ba727",
+  "prompts": {},
+  "sessions": {
+    "s_505a2cfce9114c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26f83a80-3cb9-404d-829c-6b4925947f16",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}

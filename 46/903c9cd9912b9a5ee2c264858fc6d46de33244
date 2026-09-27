@@ -1,0 +1,23 @@
+docs/ROADMAP.md
+  s_505a2cfce9114c::t_a895f3a23efb3f 67-70,77,82-86,107,117,124,132,95
+  s_505a2cfce9114c::t_cae7d95b118ccb 91,126
+  s_505a2cfce9114c::t_d1c62279407f6a 109
+  s_505a2cfce9114c::t_327a73e617ceac 90,93-94,97-100,102-106
+  s_505a2cfce9114c::t_9628464f991344 57,96,101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "46903c9cd9912b9a5ee2c264858fc6d46de33244",
+  "prompts": {},
+  "sessions": {
+    "s_505a2cfce9114c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26f83a80-3cb9-404d-829c-6b4925947f16",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
