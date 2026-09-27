@@ -12,6 +12,9 @@
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
   "ignore": [],
+  "contributors": {
+    "exclude": ["JohnCampionJr"]
+  },
   "privatePackages": {
     "version": true,
     "tag": true
