@@ -489,11 +489,12 @@ export async function runVersion({
   let changedPackages = (await listPackages(cwd)).filter(
     (p) => versionsBefore.get(`${p.ecosystem}:${p.dir}`) !== p.version,
   );
-  const versions: VersionChange[] = changedPackages.map((p) => ({
-    name: p.name,
-    from: versionsBefore.get(`${p.ecosystem}:${p.dir}`) ?? "",
-    to: p.version,
-  }));
+  // Only packages that had a version before: one without has nothing to
+  // move from, and the summary would show a bump it can't know.
+  const versions: VersionChange[] = changedPackages.flatMap((p) => {
+    const from = versionsBefore.get(`${p.ecosystem}:${p.dir}`);
+    return from === undefined ? [] : [{ name: p.name, from, to: p.version }];
+  });
 
   // A title or message the user set keeps upstream's prerelease suffix. The
   // default names the versions instead, which already carry the tag

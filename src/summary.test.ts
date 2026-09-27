@@ -41,6 +41,19 @@ describe("withFinalVersions", () => {
     ]);
   });
 
+  it("adds a package the run moved that the plan never named", () => {
+    const planned = [{ name: "a", type: "patch", newVersion: "2.0.0" }];
+    expect(
+      withFinalVersions(planned, [
+        { name: "a", from: "1.2.3", to: "2.0.0" },
+        { name: "b", from: "1.2.3", to: "2.0.0" },
+      ]),
+    ).toEqual([
+      { name: "a", type: "patch", newVersion: "2.0.0" },
+      { name: "b", type: "major", newVersion: "2.0.0" },
+    ]);
+  });
+
   it("leaves the plan alone with no versions", () => {
     const planned = [{ name: "a", type: "minor", newVersion: "1.1.0" }];
     expect(withFinalVersions(planned, undefined)).toEqual(planned);
