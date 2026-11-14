@@ -1236,6 +1236,7 @@ case "$1" in
       },
     ],
   })}' ;;
+  config) echo '{}' ;;
   tag) echo "tag: something went wrong" >&2; exit 1 ;;
 esac
 exit 0
@@ -1996,21 +1997,69 @@ describe("first release at the version on disk", () => {
     vi.stubEnv("SHIPRIG_BIN", path.join(fixture.path, "fake-shiprig"));
 
     expect(await firstReleases(fixture.path, { solo: "0.1.0" })).toEqual([]);
+    // The tag check's warning, not the config's: this got past the config.
     expect(core.warning).toHaveBeenCalledWith(
-      expect.stringContaining("isn't treated as a first release"),
+      expect.stringContaining(
+        "Couldn't read which tags `shiprig tag --dry-run` would create, so releaseAs",
+      ),
+    );
+    expect(core.warning).not.toHaveBeenCalledWith(
+      expect.stringContaining("shiprig couldn't read its config"),
     );
   });
 
-  it("isn't one when changelogs are off, and says why", async () => {
-    // Without the entry the version PR writes, the merge couldn't tell the
-    // version is ready to publish, and would version it again on every push.
+  it('is one with "changelog": false in JSONC with a trailing comma', async () => {
+    // shiprig writes the changelog entry whatever `changelog` says, so false
+    // doesn't block a first release; the trailing comma is read as shiprig
+    // reads it.
     await using fixture = await unreleased({
-      ".changeset/config.json": JSON.stringify({ changelog: false }),
+      ".changeset/config.json": '{ "changelog": false, }\n',
     });
+    expect(await firstReleases(fixture.path, { solo: "0.1.0" })).toEqual([
+      "solo",
+    ]);
+  });
+
+  it("reads a config with comments", async () => {
+    await using fixture = await unreleased({
+      ".changeset/config.json":
+        '{\n  // the default changelog\n  "baseBranch": "main" /* main */\n}\n',
+    });
+    expect(await firstReleases(fixture.path, { solo: "0.1.0" })).toEqual([
+      "solo",
+    ]);
+  });
+
+  it("reads the config from another location shiprig resolves", async () => {
+    await using fixture = await unreleased();
+    const changeset = path.join(fixture.path, ".changeset");
+    await fs.rm(path.join(changeset, "config.json"));
+    const alternative = path.join(changeset, "changerig.jsonc");
+    await fs.writeFile(alternative, '{ "changelog": false, // here\n}\n');
+    expect(await firstReleases(fixture.path, { solo: "0.1.0" })).toEqual([
+      "solo",
+    ]);
+
+    // Broken there, it's the file read: unknown, so no first release.
+    await fs.writeFile(alternative, "{ broken");
     expect(await firstReleases(fixture.path, { solo: "0.1.0" })).toEqual([]);
-    expect(core.warning).toHaveBeenCalledWith(
-      expect.stringContaining("a first release needs changelogs"),
-    );
+  });
+
+  it.each([
+    ["isn't valid", async (file: string) => fs.writeFile(file, "{ broken")],
+    ["can't be read", async (file: string) => fs.chmod(file, 0o000)],
+  ])("isn't one when the config %s, and says why", async (_, spoil) => {
+    await using fixture = await unreleased();
+    const file = path.join(fixture.path, ".changeset", "config.json");
+    await spoil(file);
+    try {
+      expect(await firstReleases(fixture.path, { solo: "0.1.0" })).toEqual([]);
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining("shiprig couldn't read its config"),
+      );
+    } finally {
+      await fs.chmod(file, 0o644);
+    }
   });
 
   it("isn't one for another version, or in pre mode", async () => {
@@ -2046,6 +2095,7 @@ case "$1" in
     ],
   })}' ;;
   tag) printf 'would tag v0.1.0\\n\\n1 tag(s), 0 already present\\n' ;;
+  config) echo '{}' ;;
   status) echo '{"releases":[]}' > "$3" ;;
   version) printf '# solo\\n\\n## 0.1.0\\n\\n- First release\\n' > CHANGELOG.md ;;
 esac

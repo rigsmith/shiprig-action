@@ -276,6 +276,29 @@ export async function plannedTags(cwd: string): Promise<string[] | undefined> {
   return tags;
 }
 
+/**
+ * shiprig's effective changeset config, `shiprig config show --json`: parsed
+ * as shiprig parses it (comments and trailing commas allowed), from whichever
+ * location it resolves, defaults applied. Undefined when shiprig can't read
+ * it, so a caller can tell "unknown" from any setting.
+ */
+export async function readShiprigConfig(
+  cwd: string,
+): Promise<Record<string, unknown> | undefined> {
+  const out = await getExecOutputShiprig(["config", "show", "--json"], {
+    cwd,
+    ignoreReturnCode: true,
+    silent: true,
+  });
+  if (out.exitCode !== 0) return undefined;
+  try {
+    const config = JSON.parse(out.stdout);
+    return typeof config === "object" && config !== null ? config : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The bump type the action shows for a first release, which bumps nothing. */
 export const FIRST_RELEASE = "first release";
 

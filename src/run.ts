@@ -23,8 +23,8 @@ import {
   readChangelog,
   readPreState,
   readReleasePlan,
+  readShiprigConfig,
   type ShiprigPackage,
-  workspaceRoot,
 } from "./shiprig.ts";
 import { getChangelogEntry, sortTheThings } from "./utils.ts";
 
@@ -722,6 +722,14 @@ export async function firstReleases(
   const entries = Object.entries(releaseAs ?? {});
   if (entries.length === 0) return [];
   if ((await readPreState(cwd))?.mode === "pre") return [];
+  // A config shiprig can't read leaves the release unknown: say so rather
+  // than guess. (Read before the package list, which fails on it too.)
+  if ((await readShiprigConfig(cwd)) === undefined) {
+    core.warning(
+      `shiprig couldn't read its config (\`shiprig config show --json\` failed), so releaseAs at the current version (${entries.map(([name]) => name).join(", ")}) isn't treated as a first release.`,
+    );
+    return [];
+  }
   const packages = await listPackages(cwd);
   const candidates: ShiprigPackage[] = [];
   for (const [name, version] of entries) {
@@ -737,17 +745,9 @@ export async function firstReleases(
     candidates.push(pkg);
   }
   if (candidates.length === 0) return [];
-  // The changelog entry is what marks the version as versioned: without
-  // changelogs, the merge of the version PR would version it again instead
-  // of publishing it, on every push until it's tagged.
-  // So with changelogs off, it isn't one, and the run goes on as it would.
-  if (await changelogsDisabled(cwd)) {
-    core.warning(
-      `releaseAs names ${candidates.map((p) => `${p.name}@${p.version}`).join(", ")} at the version already on disk, but changelogs are off ("changelog": false in .changeset/config.json), and a first release needs changelogs: the changelog entry the version PR writes is how the action knows the version is ready to publish. ` +
-        "Not treating it as a first release. Turn changelogs on, or publish this version another way and remove the releaseAs entry.",
-    );
-    return [];
-  }
+  // No check for `"changelog": false`: shiprig writes the changelog entry
+  // whatever that says (it reads false as the default format), so the entry
+  // the version PR writes always marks the version as ready to publish.
   // Only on evidence that the tag is missing: an unknown answer could hide a
   // released version, which a first release would then pass to shiprig.
   const toTag = await packagesToTag(cwd, packages);
@@ -760,22 +760,6 @@ export async function firstReleases(
   return candidates
     .filter((pkg) => toTag.some((t) => t.pkg === pkg))
     .map((pkg) => pkg.name);
-}
-
-/** Whether .changeset/config.json turns changelogs off. */
-async function changelogsDisabled(cwd: string): Promise<boolean> {
-  try {
-    const config = JSON.parse(
-      await fs.readFile(
-        path.join(await workspaceRoot(cwd), ".changeset", "config.json"),
-        "utf8",
-      ),
-    );
-    return config?.changelog === false;
-  } catch {
-    // No config, or one shiprig would refuse itself: not this check's to judge.
-    return false;
-  }
 }
 
 function sameVersion(a: string, b: string): boolean {

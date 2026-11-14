@@ -161,9 +161,10 @@ writes the changelog entry without bumping anything. Merging it publishes
 changelog has no entry for it and its tag doesn't exist. After the version
 PR, the entry is there, so the merge publishes rather than versioning again,
 and the `releaseAs` entry can stay. shiprig itself refuses a version that's
-already on the registry or tagged. With changelogs off (`"changelog": false`), there's no
-entry to mark the version as ready, so the action warns and doesn't treat it as
-a first release, rather than versioning it on every push. This needs a shiprig release that supports
+already on the registry or tagged. `"changelog": false` doesn't change this:
+shiprig still writes the changelog entry (it reads `false` as the default
+format). If shiprig can't read its config, the action warns and doesn't treat
+the entry as a first release. This needs a shiprig release that supports
 `--release-as` at the current version.
 
 **A version PR per release group.** `separate-pull-requests: true` (or
