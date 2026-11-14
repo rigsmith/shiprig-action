@@ -18,10 +18,13 @@ import {
   execShiprig,
   getExecOutputShiprig,
   listPackages,
+  FIRST_RELEASE,
+  plannedTags,
   readChangelog,
   readPreState,
   readReleasePlan,
   type ShiprigPackage,
+  workspaceRoot,
 } from "./shiprig.ts";
 import { getChangelogEntry, sortTheThings } from "./utils.ts";
 
@@ -31,32 +34,114 @@ import { getChangelogEntry, sortTheThings } from "./utils.ts";
 // To avoid that, we ensure to cap the message to 60k chars.
 const MAX_CHARACTERS_PER_MESSAGE = 60000;
 
+/**
+ * What a GitHub release does when its package's changelog has no entry for
+ * the version: fail (`error`, the default, checked before publishing too),
+ * let GitHub write the notes from the merged PRs (`generate`), or create no
+ * release (`skip`).
+ */
+export type ReleaseNotesFallback = "error" | "generate" | "skip";
+
 const createRelease = async (
   octokit: Octokit,
-  { pkg, tagName }: { pkg: ShiprigPackage; tagName: string },
-) => {
+  {
+    pkg,
+    tagName,
+    releaseNotesFallback,
+  }: {
+    pkg: ShiprigPackage;
+    tagName: string;
+    releaseNotesFallback: ReleaseNotesFallback;
+  },
+): Promise<boolean> => {
   const changelog = await readChangelog(pkg);
   if (changelog === undefined) {
     // if we can't find a changelog, the user has probably disabled changelogs
-    return;
+    return false;
   }
-  let changelogEntry = getChangelogEntry(changelog, pkg.version);
-  if (!changelogEntry) {
-    // we can find a changelog but not the entry for this version
-    // if this is true, something has probably gone wrong
+  const changelogEntry = getChangelogEntry(changelog, pkg.version);
+  const release = {
+    name: tagName,
+    tag_name: tagName,
+    prerelease: pkg.version.includes("-"),
+    ...context.repo,
+  };
+  if (!changelogEntry.found) {
+    // Without its heading, the entry's content is the whole changelog, which
+    // is no release's notes.
+    if (releaseNotesFallback === "skip") {
+      core.warning(
+        `No changelog entry for ${pkg.name}@${pkg.version}; not creating the ${tagName} release (release-notes-fallback: skip).`,
+      );
+      return false;
+    }
+    if (releaseNotesFallback === "generate") {
+      core.warning(
+        `No changelog entry for ${pkg.name}@${pkg.version}; the ${tagName} release gets notes GitHub generates (release-notes-fallback: generate).`,
+      );
+      await octokit.rest.repos.createRelease({
+        ...release,
+        generate_release_notes: true,
+      });
+      return true;
+    }
     throw new Error(
       `Could not find changelog entry for ${pkg.name}@${pkg.version}`,
     );
   }
 
   await octokit.rest.repos.createRelease({
-    name: tagName,
-    tag_name: tagName,
+    ...release,
     body: changelogEntry.content,
-    prerelease: pkg.version.includes("-"),
-    ...context.repo,
   });
+  return true;
 };
+
+/**
+ * The packages a publish would tag, each with its tag, from `shiprig tag
+ * --dry-run`. A tag is matched to its package as shiprig names it,
+ * `<name>@<version>`, or `v<version>` for the one package at that version (a
+ * single-package repository). Undefined when shiprig couldn't say.
+ */
+async function packagesToTag(
+  cwd: string,
+  packages: ShiprigPackage[],
+): Promise<{ pkg: ShiprigPackage; tag: string }[] | undefined> {
+  const tags = await plannedTags(cwd);
+  if (tags === undefined) return undefined;
+  return tags.flatMap((tag) => {
+    const named = packages.find((p) => tag === `${p.name}@${p.version}`);
+    if (named) return [{ pkg: named, tag }];
+    const atVersion = packages.filter(
+      (p) => !p.ignored && tag === `v${p.version}`,
+    );
+    if (atVersion.length === 1) return [{ pkg: atVersion[0], tag }];
+    core.debug(`No package matches the tag ${tag}; not checking it.`);
+    return [];
+  });
+}
+
+/**
+ * Of the packages about to be tagged, those whose changelog exists but has no
+ * entry for their version: each would fail its GitHub release once it was
+ * already published. A package with no changelog at all gets no release, so
+ * it isn't one.
+ */
+async function missingChangelogEntries(
+  toTag: { pkg: ShiprigPackage; tag: string }[],
+): Promise<ShiprigPackage[]> {
+  const missing: ShiprigPackage[] = [];
+  for (const { pkg } of toTag) {
+    const changelog = await readChangelog(pkg);
+    if (
+      changelog !== undefined &&
+      !getChangelogEntry(changelog, pkg.version).found
+    ) {
+      missing.push(pkg);
+    }
+  }
+  return missing;
+}
 
 type PublishOptions = {
   script?: string;
@@ -65,6 +150,11 @@ type PublishOptions = {
   pushGitTags: boolean;
   // Comment "released in" on the pull requests whose changesets shipped.
   commentReleasedPrs?: boolean;
+  // A changelog with no entry for the released version. Default: error.
+  releaseNotesFallback?: ReleaseNotesFallback;
+  // Run `shiprig publish --dry-run` and report what would be tagged and
+  // released, publishing, pushing and creating nothing.
+  dryRun?: boolean;
   github: GitHub;
   cwd: string;
 };
@@ -90,6 +180,10 @@ type PublishResult =
   | {
       published: false;
       exitCode: number;
+      // A dry run's report: what a real run would tag, and whether each
+      // would get a GitHub release. Undefined when the action couldn't tell
+      // what would be tagged.
+      wouldRelease?: (PublishedPackage & { tag: string; release: boolean })[];
     };
 
 function isObject(value: unknown) {
@@ -162,18 +256,78 @@ export async function runPublish({
   createGithubReleases,
   pushGitTags,
   commentReleasedPrs = false,
+  releaseNotesFallback = "error",
+  dryRun = false,
   cwd,
 }: PublishOptions): Promise<PublishResult> {
   const { octokit } = github;
-  // Changesets creates annotated tags locally, including when the action pushes those tags through the GitHub API.
-  // It might also be important for custom publish scripts to have a valid git user configured.
-  await github.ensureGitUser();
 
   // Checked before publishing, which can't be undone: a package list that
   // fails validation stops the run while nothing has gone out yet, not after,
   // when the tags it published would be left unreported. It's read again once
   // the script has run (below), since a custom script may change versions.
-  await listPackages(cwd);
+  const packagesBefore = await listPackages(cwd);
+
+  // So is every release's changelog entry: a missing one used to surface
+  // only at its GitHub release, after the packages were published and the
+  // tags pushed, leaving a release that can't be run again.
+  const toTag =
+    createGithubReleases || dryRun
+      ? await packagesToTag(cwd, packagesBefore)
+      : [];
+  if (toTag === undefined && createGithubReleases) {
+    // Unknown is not "none missing": with `error`, a missing entry must stop
+    // the run here, so an unreadable answer stops it too.
+    if (releaseNotesFallback === "error") {
+      throw new Error(
+        "Couldn't read which tags `shiprig tag --dry-run` would create, so the changelog entries the GitHub releases need couldn't be checked. Nothing was published. " +
+          "Check that shiprig runs here, or set release-notes-fallback to `generate` or `skip` to publish without the check.",
+      );
+    }
+    core.warning(
+      `Couldn't read what \`shiprig tag --dry-run\` would tag, so changelog entries weren't checked before publishing (release-notes-fallback: ${releaseNotesFallback}).`,
+    );
+  }
+  const missing =
+    createGithubReleases && toTag ? await missingChangelogEntries(toTag) : [];
+  if (missing.length > 0) {
+    const list = missing
+      .map(
+        (p) =>
+          `${p.name}@${p.version} (${path.relative(cwd, p.changelog) || p.changelog})`,
+      )
+      .join(", ");
+    if (releaseNotesFallback === "error") {
+      throw new Error(
+        `No changelog entry for the version about to be released: ${list}. Nothing was published. ` +
+          "Add a `## <version>` entry to each changelog, or set release-notes-fallback to `generate` or `skip`.",
+      );
+    }
+    core.warning(
+      `No changelog entry for the version about to be released: ${list}. Their GitHub releases ${
+        releaseNotesFallback === "generate"
+          ? "get notes GitHub generates"
+          : "are skipped"
+      } (release-notes-fallback: ${releaseNotesFallback}).`,
+    );
+  }
+
+  if (dryRun) {
+    return publishDryRun({
+      script,
+      fromPackDir,
+      github,
+      createGithubReleases,
+      pushGitTags,
+      releaseNotesFallback,
+      cwd,
+      toTag,
+    });
+  }
+
+  // Changesets creates annotated tags locally, including when the action pushes those tags through the GitHub API.
+  // It might also be important for custom publish scripts to have a valid git user configured.
+  await github.ensureGitUser();
 
   let changesetPublishOutput: ExecOutput;
   const outputFile = path.join(
@@ -233,6 +387,8 @@ export async function runPublish({
     return { pkg, tag: event.tag };
   });
 
+  // The tags whose GitHub release this run created.
+  const withRelease = new Set<string>();
   if (createGithubReleases || pushGitTags) {
     await Promise.all(
       releases.map(async ({ pkg, tag }) => {
@@ -240,19 +396,32 @@ export async function runPublish({
           await github.pushTag(tag);
         }
         if (createGithubReleases) {
-          await createRelease(octokit, { pkg, tagName: tag });
+          if (
+            await createRelease(octokit, {
+              pkg,
+              tagName: tag,
+              releaseNotesFallback,
+            })
+          ) {
+            withRelease.add(tag);
+          }
         }
       }),
     );
   }
 
-  // Only once the tags are on GitHub: a comment links each release.
-  if (commentReleasedPrs && pushGitTags && releases.length) {
+  // Only once the tags are on GitHub: a comment links each release. When the
+  // run creates releases, a package that got none (release-notes-fallback:
+  // skip, or no changelog) isn't named, as its link would lead nowhere.
+  const commented = createGithubReleases
+    ? releases.filter(({ tag }) => withRelease.has(tag))
+    : releases;
+  if (commentReleasedPrs && pushGitTags && commented.length) {
     await commentReleasedPrsOn({
       octokit,
       sha: context.sha,
       released: await Promise.all(
-        releases.map(async ({ pkg, tag }) => {
+        commented.map(async ({ pkg, tag }) => {
           const entry = getChangelogEntry(
             (await readChangelog(pkg)) ?? "",
             pkg.version,
@@ -288,6 +457,87 @@ export async function runPublish({
   }
 
   return { published: false, exitCode: changesetPublishOutput.exitCode };
+}
+
+/**
+ * The publish path's dry run: `shiprig publish --dry-run` shows what would go
+ * to each registry, and the log says which tags would be pushed and releases
+ * created. A custom publish script isn't run: the action can't know it honors
+ * a dry-run flag, and one that ignored it would publish for real.
+ */
+async function publishDryRun({
+  script,
+  fromPackDir,
+  github,
+  createGithubReleases,
+  pushGitTags,
+  releaseNotesFallback = "error",
+  cwd,
+  toTag,
+}: Omit<PublishOptions, "commentReleasedPrs"> & {
+  toTag: { pkg: ShiprigPackage; tag: string }[] | undefined;
+}): Promise<PublishResult> {
+  if (script) {
+    core.info(
+      `Dry run: not running the publish script (${script}); \`shiprig publish --dry-run\` shows what shiprig would publish instead.`,
+    );
+  }
+  const args = ["publish", "--dry-run"];
+  if (fromPackDir) {
+    args.push("--from-pack-dir", fromPackDir);
+  }
+  const output = await getExecOutputShiprig(args, {
+    cwd,
+    ignoreReturnCode: true,
+    env: {
+      ...process.env,
+      GITHUB_TOKEN: github.getToken(),
+      // No events: nothing is tagged, so there's nothing to push or release.
+      CHANGESETS_OUTPUT: "",
+    },
+  });
+  if (toTag === undefined) {
+    // Not "nothing": the action couldn't tell.
+    core.warning(
+      "Dry run: couldn't read which tags `shiprig tag --dry-run` would create, so this can't say what a real run would tag or release. `shiprig publish --dry-run` above shows what shiprig would publish.",
+    );
+    return { published: false, exitCode: output.exitCode };
+  }
+  const wouldRelease: NonNullable<
+    Extract<PublishResult, { published: false }>["wouldRelease"]
+  > = [];
+  for (const { pkg, tag } of toTag) {
+    // As createRelease decides: no changelog, or no entry with `skip`, means
+    // no release.
+    const changelog = await readChangelog(pkg);
+    const hasEntry =
+      changelog !== undefined &&
+      getChangelogEntry(changelog, pkg.version).found;
+    const release =
+      createGithubReleases &&
+      changelog !== undefined &&
+      (hasEntry || releaseNotesFallback === "generate");
+    const actions = [
+      pushGitTags && `push the tag ${tag}`,
+      release &&
+        `create the ${tag} GitHub release${hasEntry ? "" : " with notes GitHub generates"}`,
+    ].filter(Boolean);
+    core.info(
+      `Dry run: ${pkg.name}@${pkg.version} would be released${
+        actions.length ? `; the action would ${actions.join(" and ")}` : ""
+      }${createGithubReleases && !release ? `, with no GitHub release (${changelog === undefined ? "no changelog" : "release-notes-fallback: skip"})` : ""}.`,
+    );
+    wouldRelease.push({
+      name: pkg.name,
+      version: pkg.version,
+      tag,
+      release,
+    });
+  }
+  if (toTag.length === 0) {
+    core.info("Dry run: nothing would be tagged or released.");
+  }
+  return { published: false, exitCode: output.exitCode, wouldRelease };
 }
 
 type GetMessageOptions = {
@@ -375,6 +625,10 @@ type VersionOptions = {
   releaseAs?: Record<string, string>;
   // A version PR per release group instead of one for everything.
   separatePullRequests?: boolean;
+  // Print the plan and the PR it would open; change nothing.
+  dryRun?: boolean;
+  // Set by runVersion: the packages releasing at their current version.
+  firstRelease?: string[];
 };
 
 type RunVersionResult = {
@@ -390,6 +644,13 @@ type RunVersionResult = {
   // these rather than the plan's, which was read before the run: releaseAs
   // moves the named package and any sharing its version file.
   versions?: VersionChange[];
+  // A dry run's report: each version PR a real run would open or update.
+  dryRun?: {
+    branch: string;
+    title: string;
+    pullRequestNumber?: number;
+    held: boolean;
+  }[];
 };
 
 /** A package this run versioned: its version before, and after. */
@@ -406,13 +667,26 @@ export async function runVersion(
         "the script runs its own version command. Pass `--release-as <package>=<version>` to shiprig in the script instead.",
     );
   }
+  if (separatePullRequests && script) {
+    throw new Error(
+      "separate-pull-requests can't be combined with a custom version-script: each PR versions one release group with `shiprig version --only`, which the script doesn't run.",
+    );
+  }
   const branch = options.branch ?? context.ref.replace("refs/heads/", "");
   const versionBranch = `changeset-release/${branch}`;
+  const firstRelease = await firstReleases(
+    options.cwd ?? process.cwd(),
+    releaseAs,
+  );
+  if (options.dryRun) {
+    return versionDryRun({ ...options, branch, versionBranch, firstRelease });
+  }
   if (!separatePullRequests) {
     const result = await runVersionBranch({
       ...options,
       branch,
       versionBranch,
+      firstRelease,
     });
     return {
       ...result,
@@ -422,12 +696,199 @@ export async function runVersion(
           : [result.pullRequestNumber],
     };
   }
+  return runVersionPerGroup({
+    ...options,
+    branch,
+    versionBranch,
+    firstRelease,
+  });
+}
+
+/**
+ * The packages `releaseAs` names at their own current version, still
+ * unreleased: a first release at the version already on disk (`shiprig
+ * version --release-as <pkg>=<current>`, which writes its changelog entry
+ * with no bump). Unreleased means the changelog has no entry for that
+ * version (or there's no changelog yet), which is exactly what the version
+ * run writes, so once the version PR merges the package publishes instead of
+ * being versioned again. A package `shiprig tag --dry-run` wouldn't tag (its
+ * tag exists) is released already, whatever its changelog says. Nothing in
+ * pre mode, where releaseAs waits.
+ */
+export async function firstReleases(
+  cwd: string,
+  releaseAs: Record<string, string> | undefined,
+): Promise<string[]> {
+  const entries = Object.entries(releaseAs ?? {});
+  if (entries.length === 0) return [];
+  if ((await readPreState(cwd))?.mode === "pre") return [];
+  const packages = await listPackages(cwd);
+  const candidates: ShiprigPackage[] = [];
+  for (const [name, version] of entries) {
+    const pkg = packages.find((p) => p.name === name);
+    if (!pkg || pkg.ignored || !sameVersion(pkg.version, version)) continue;
+    const changelog = await readChangelog(pkg);
+    if (
+      changelog !== undefined &&
+      getChangelogEntry(changelog, pkg.version).found
+    ) {
+      continue;
+    }
+    candidates.push(pkg);
+  }
+  if (candidates.length === 0) return [];
+  // The changelog entry is what marks the version as versioned: without
+  // changelogs, the merge of the version PR would version it again instead
+  // of publishing it, on every push until it's tagged.
+  // So with changelogs off, it isn't one, and the run goes on as it would.
+  if (await changelogsDisabled(cwd)) {
+    core.warning(
+      `releaseAs names ${candidates.map((p) => `${p.name}@${p.version}`).join(", ")} at the version already on disk, but changelogs are off ("changelog": false in .changeset/config.json), and a first release needs changelogs: the changelog entry the version PR writes is how the action knows the version is ready to publish. ` +
+        "Not treating it as a first release. Turn changelogs on, or publish this version another way and remove the releaseAs entry.",
+    );
+    return [];
+  }
+  // Only on evidence that the tag is missing: an unknown answer could hide a
+  // released version, which a first release would then pass to shiprig.
+  const toTag = await packagesToTag(cwd, packages);
+  if (toTag === undefined) {
+    core.warning(
+      `Couldn't read which tags \`shiprig tag --dry-run\` would create, so releaseAs at the current version (${candidates.map((p) => p.name).join(", ")}) isn't treated as a first release.`,
+    );
+    return [];
+  }
+  return candidates
+    .filter((pkg) => toTag.some((t) => t.pkg === pkg))
+    .map((pkg) => pkg.name);
+}
+
+/** Whether .changeset/config.json turns changelogs off. */
+async function changelogsDisabled(cwd: string): Promise<boolean> {
+  try {
+    const config = JSON.parse(
+      await fs.readFile(
+        path.join(await workspaceRoot(cwd), ".changeset", "config.json"),
+        "utf8",
+      ),
+    );
+    return config?.changelog === false;
+  } catch {
+    // No config, or one shiprig would refuse itself: not this check's to judge.
+    return false;
+  }
+}
+
+function sameVersion(a: string, b: string): boolean {
+  return semver.valid(a) && semver.valid(b) ? semver.eq(a, b) : a === b;
+}
+
+/**
+ * The version path's dry run: `shiprig version --dry-run` prints the plan
+ * without writing a file, and the log says which version PR would be opened
+ * or updated, under what title. Nothing is committed, pushed or opened; the
+ * version PRs are only listed. A custom version script isn't run, as it would
+ * write the files `--dry-run` leaves alone.
+ */
+async function versionDryRun({
+  script,
+  github,
+  cwd = process.cwd(),
+  prTitle,
+  holdLabel = "release:hold",
+  releaseAs,
+  separatePullRequests,
+  branch,
+  versionBranch,
+  firstRelease = [],
+}: VersionOptions & {
+  branch: string;
+  versionBranch: string;
+}): Promise<RunVersionResult> {
+  const { octokit } = github;
   if (script) {
-    throw new Error(
-      "separate-pull-requests can't be combined with a custom version-script: each PR versions one release group with `shiprig version --only`, which the script doesn't run.",
+    core.info(
+      `Dry run: not running the version script (${script}); \`shiprig version --dry-run\` shows the plan instead.`,
     );
   }
-  return runVersionPerGroup({ ...options, branch, versionBranch });
+  const pre = await readPreState(cwd);
+  const preState = pre?.mode === "pre" ? pre : undefined;
+  const args = ["version", "--dry-run"];
+  const overrides = new Map<string, string>();
+  for (const spec of releaseAsArgs(
+    releaseAs,
+    await listPackages(cwd),
+    preState,
+    firstRelease,
+  )) {
+    args.push("--release-as", spec);
+    const at = spec.lastIndexOf("=");
+    overrides.set(spec.slice(0, at), spec.slice(at + 1));
+  }
+  await execShiprig(args, {
+    cwd,
+    env: { ...process.env, GITHUB_TOKEN: github.getToken() },
+  });
+
+  // One PR for everything, or one per release group. A first release isn't
+  // in shiprig's plan (nothing bumps it); it releases on its own.
+  // The plan is read before releaseAs applies: report the versions the
+  // overrides set, as the real run's PR would.
+  const plan = (await readReleasePlan(cwd))
+    .filter((r) => r.type !== "none")
+    .map((r) =>
+      overrides.has(r.name) ? { ...r, newVersion: overrides.get(r.name)! } : r,
+    );
+  for (const name of firstRelease) {
+    if (!plan.some((r) => r.name === name)) {
+      plan.push({ name, type: FIRST_RELEASE, newVersion: releaseAs![name] });
+    }
+  }
+  const prs = new Map<string, typeof plan>();
+  for (const r of plan) {
+    const head = separatePullRequests
+      ? `${versionBranch}/${branchSlug(r.group ?? r.name)}`
+      : versionBranch;
+    prs.set(head, [...(prs.get(head) ?? []), r]);
+  }
+
+  const dryRun: NonNullable<RunVersionResult["dryRun"]> = [];
+  for (const [head, releases] of [...prs].sort(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
+    const title =
+      prTitle !== undefined
+        ? `${prTitle}${preState ? ` (${preState.tag})` : ""}`
+        : releaseTitle(
+            releases.map((r) => ({ name: r.name, version: r.newVersion })),
+          );
+    const { data: open } = await octokit.rest.pulls.list({
+      ...context.repo,
+      state: "open",
+      head: `${context.repo.owner}:${head}`,
+      base: branch,
+    });
+    const existing = open[0];
+    const held = open.some((p) =>
+      (p.labels ?? []).some((l) => l.name === holdLabel),
+    );
+    core.info(
+      held
+        ? `Dry run: the version PR #${existing.number} (${head}) has the "${holdLabel}" label, so a real run would leave it alone.`
+        : existing
+          ? `Dry run: would push ${head} and update the version PR #${existing.number} to "${title}".`
+          : `Dry run: would push ${head} and open a version PR into ${branch}, "${title}".`,
+    );
+    dryRun.push({
+      branch: head,
+      title,
+      pullRequestNumber: existing?.number,
+      held,
+    });
+  }
+  if (dryRun.length === 0) {
+    core.info("Dry run: nothing would release, so no version PR.");
+  }
+  return { pullRequestNumbers: [], dryRun };
 }
 
 /**
@@ -458,6 +919,11 @@ async function runVersionPerGroup(
     const group = r.group ?? r.name;
     groups.set(group, [...(groups.get(group) ?? []), r.name]);
   }
+  // A first release isn't in the plan: it gets a group of its own.
+  const firstRelease = options.firstRelease ?? [];
+  for (const name of firstRelease) {
+    if (!plan.some((r) => r.name === name)) groups.set(name, [name]);
+  }
 
   const branches = new Set<string>();
   const numbers: number[] = [];
@@ -468,7 +934,10 @@ async function runVersionPerGroup(
   for (const group of [...groups.keys()].sort()) {
     const members = groups.get(group)!;
     // Nothing in the group actually releases (range-only rewrites alone).
-    if (!plan.some((r) => members.includes(r.name) && r.type !== "none")) {
+    if (
+      !plan.some((r) => members.includes(r.name) && r.type !== "none") &&
+      !members.some((name) => firstRelease.includes(name))
+    ) {
       continue;
     }
     const groupBranch = `${versionBranch}/${branchSlug(group)}`;
@@ -569,6 +1038,7 @@ async function runVersionBranch({
   releaseAs,
   versionBranch,
   only,
+  firstRelease = [],
 }: VersionOptions & {
   versionBranch: string;
   only?: string[];
@@ -658,14 +1128,19 @@ async function runVersionBranch({
       groupReleaseAs,
       packagesBefore,
       preState,
+      firstRelease,
     )) {
       args.push("--release-as", spec);
     }
     await execShiprig(args, { cwd, env });
   }
 
+  // A first release stays at its version, and still releases.
+  const firstHere = firstRelease.filter((name) => !only || only.includes(name));
   let changedPackages = (await listPackages(cwd)).filter(
-    (p) => versionsBefore.get(`${p.ecosystem}:${p.dir}`) !== p.version,
+    (p) =>
+      versionsBefore.get(`${p.ecosystem}:${p.dir}`) !== p.version ||
+      firstHere.includes(p.name),
   );
   // Only packages that had a version before: one without has nothing to
   // move from, and the summary would show a bump it can't know.
@@ -914,6 +1389,8 @@ export function releaseAsArgs(
   releaseAs: Record<string, string> | undefined,
   packages: ShiprigPackage[],
   preState: { tag: string } | undefined,
+  // Packages releasing at their current, unreleased version (firstReleases).
+  firstRelease: string[] = [],
 ): string[] {
   const entries = Object.entries(releaseAs ?? {});
   if (entries.length === 0) return [];
@@ -936,6 +1413,15 @@ export function releaseAsArgs(
   const args: string[] = [];
   for (const [name, version] of entries) {
     const pkg = byName.get(name)!;
+    // At its own version and unreleased: a first release at that version,
+    // which shiprig checks against the registry and the tags itself.
+    if (firstRelease.includes(name)) {
+      core.info(
+        `releaseAs: ${name} is at ${version}, which isn't released yet; releasing it at that version.`,
+      );
+      args.push(`${name}=${version}`);
+      continue;
+    }
     // A full semver comparison: a target with a prerelease or build suffix
     // (2.0.0-rc.1, 2.0.0+build.5) is compared whole, so a package already
     // past it isn't handed an override for a version behind it. A current

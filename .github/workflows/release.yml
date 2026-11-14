@@ -2,7 +2,7 @@
 # action (built from this checkout) either opens/updates the version PR
 # (`pnpm bump`: shiprig version + the @vN references in the READMEs), or, once
 # that PR has merged, runs `pnpm release`: dist/ committed on a release commit,
-# tagged vX.Y.Z, the vN branch moved to it, and a GitHub release created from
+# tagged vX.Y.Z, the vN branch and vN tag moved to it, and a GitHub release created from
 # the changelog. Users take the action from a tag or vN, never main.
 #
 # The action acts as the shipRig GitHub App (org variable

@@ -2,7 +2,12 @@ import * as core from "@actions/core";
 import { context } from "@actions/github";
 import { loadConfig, resolveSetting } from "./config.ts";
 import { GitHub } from "./github.ts";
-import { publishDecision, runPublish, runVersion } from "./run.ts";
+import {
+  firstReleases,
+  publishDecision,
+  runPublish,
+  runVersion,
+} from "./run.ts";
 import {
   hasChangesetFiles,
   readReleasePlan,
@@ -64,6 +69,16 @@ async function main() {
   const pushWithGitCli = resolveSetting(config, "pushWithGitCli") ?? false;
   const prDraft = resolveSetting(config, "prDraft");
   const prBaseBranch = resolveSetting(config, "prBaseBranch");
+  // A rehearsal: shiprig's own --dry-run, and nothing opened, pushed, tagged,
+  // published or released. An input only: it's a property of the run.
+  const dryRun = getOptionalInput("dry-run")
+    ? core.getBooleanInput("dry-run")
+    : false;
+  if (dryRun) {
+    core.info(
+      "Dry run: nothing will be published, pushed, tagged, released or opened.",
+    );
+  }
   if (prDraft !== undefined && prDraft !== "always" && prDraft !== "create") {
     throw new Error(`Invalid pr-draft: ${prDraft}`);
   }
@@ -79,7 +94,18 @@ async function main() {
   // counts them, for the has-changesets output and the "nothing to release"
   // case (changesets that are empty or name only ignored packages).
   const releases = await readReleasePlan(cwd);
-  const hasPendingReleases = releases.length > 0;
+  // A releaseAs entry at a package's own unreleased version is a release too,
+  // with no changeset or commit behind it (a first release of what's on disk).
+  const firstRelease = await firstReleases(
+    cwd,
+    resolveSetting(config, "releaseAs"),
+  );
+  if (firstRelease.length > 0) {
+    core.info(
+      `releaseAs names ${firstRelease.join(", ")} at the version already on disk, which isn't released yet: a first release, through the version PR.`,
+    );
+  }
+  const hasPendingReleases = releases.length > 0 || firstRelease.length > 0;
   // The has-changesets output keeps its documented meaning (changeset files
   // exist); a conventional-commit release has none. Release work, from files
   // or commits, is what drives the flow below.
@@ -132,8 +158,30 @@ async function main() {
         createGithubReleases,
         pushGitTags,
         commentReleasedPrs,
+        releaseNotesFallback:
+          resolveSetting(config, "releaseNotesFallback") ?? "error",
+        dryRun,
         cwd,
       });
+
+      if (dryRun) {
+        const would = result.published ? [] : result.wouldRelease;
+        await writeSummary(
+          reasonSummary(
+            would === undefined
+              ? "Dry run: the action couldn't read which tags a real run would create; `shiprig publish --dry-run` in the log shows what shiprig would publish."
+              : would.length
+                ? `Dry run: a real run would release ${would.map((p) => `${p.name}@${p.version} (${p.tag}${p.release ? "" : ", no GitHub release"})`).join(", ")}.`
+                : "Dry run: a real run would release nothing.",
+          ),
+        );
+        if (result.exitCode !== 0) {
+          throw new Error(
+            `\`shiprig publish --dry-run\` exited with code ${result.exitCode}`,
+          );
+        }
+        return;
+      }
 
       await writeSummary(
         publishedSummary(
@@ -170,21 +218,47 @@ async function main() {
       return;
     }
     case hasChangesets: {
-      const { pullRequestNumber, pullRequestNumbers, skipped, versions } =
-        await runVersion({
-          script: getOptionalInput("version-script"),
-          github,
-          cwd,
-          prTitle: resolveSetting(config, "prTitle"),
-          commitMessage: resolveSetting(config, "commitMessage"),
-          hasPublishScript,
-          prDraft,
-          branch: prBaseBranch,
-          holdLabel: resolveSetting(config, "holdLabel"),
-          releaseAs: resolveSetting(config, "releaseAs"),
-          separatePullRequests:
-            resolveSetting(config, "separatePullRequests") ?? false,
-        });
+      const {
+        pullRequestNumber,
+        pullRequestNumbers,
+        skipped,
+        versions,
+        dryRun: wouldOpen,
+      } = await runVersion({
+        script: getOptionalInput("version-script"),
+        github,
+        cwd,
+        prTitle: resolveSetting(config, "prTitle"),
+        commitMessage: resolveSetting(config, "commitMessage"),
+        hasPublishScript,
+        prDraft,
+        branch: prBaseBranch,
+        holdLabel: resolveSetting(config, "holdLabel"),
+        releaseAs: resolveSetting(config, "releaseAs"),
+        separatePullRequests:
+          resolveSetting(config, "separatePullRequests") ?? false,
+        dryRun,
+      });
+
+      if (wouldOpen) {
+        await writeSummary(
+          reasonSummary(
+            wouldOpen.length
+              ? `Dry run: a real run would ${wouldOpen
+                  .map((pr) =>
+                    pr.held
+                      ? `leave the held version PR #${pr.pullRequestNumber} alone`
+                      : pr.pullRequestNumber !== undefined
+                        ? `update the version PR #${pr.pullRequestNumber} ("${pr.title}")`
+                        : `open a version PR from ${pr.branch} ("${pr.title}")`,
+                  )
+                  .join(", ")}.`
+              : "Dry run: nothing would release, so no version PR.",
+          ),
+        );
+        core.setOutput("pr-numbers", "[]");
+        return;
+      }
 
       if (pullRequestNumber !== undefined) {
         core.setOutput("pr-number", String(pullRequestNumber));

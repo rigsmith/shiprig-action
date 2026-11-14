@@ -9,11 +9,15 @@ shiprig-action releases itself, with itself (`.github/workflows/release.yml`).
    writes `CHANGELOG.md`) and points the READMEs' `@vN` examples at the release
    line.
 3. **Merge the version PR** (`chore: release <version>`). The workflow runs `pnpm release`, which:
-   - does nothing if this version's tag is already on the remote, so a push
-     without a new version never moves the release line;
+   - releases nothing if this version's tag is already on the remote, so a
+     push without a new version never moves the release line forward; it
+     only moves the `vN` branch and tag back onto that tag if a failed push
+     or a hand edit left them elsewhere;
    - commits the built `dist/` on a detached release commit;
    - tags it `vX.Y.Z` with `shiprig tag`;
-   - force-pushes the `vN` branch to that commit (prereleases push only the tag);
+   - pushes the `vX.Y.Z` tag and force-pushes the `vN` branch and `vN` tag to
+     that commit in one atomic push, so a refused ref leaves all three
+     untouched (prereleases push only their `vX.Y.Z` tag);
    - only then reports the tag to the action through `CHANGESETS_OUTPUT`, so a
      failed push never leads to a release.
 
@@ -22,9 +26,10 @@ shiprig-action releases itself, with itself (`.github/workflows/release.yml`).
    tag without a release and reports it again, so the action creates it; the
    release line isn't moved.
 
-Users reference the action as `rigsmith/shiprig-action@v0` (the release line
-branch) or a release tag (`@vX.Y.Z`), never `@main`: `dist/` exists only in release
-commits.
+Users reference the action as `rigsmith/shiprig-action@v0` (the release line,
+kept as both a branch and a tag on the latest release), a release tag
+(`@vX.Y.Z`), or that tag's full commit SHA, never `@main`: `dist/` exists only in
+release commits.
 
 ## Requirements
 
@@ -37,7 +42,7 @@ commits.
   to run**, which a PR opened with `GITHUB_TOKEN` would need.
 - The workflow mints two App tokens. The action's (Contents, Pull requests)
   opens the version PR and creates the GitHub release. The release script's
-  git pushes (the release commit, the tag and the `vN` branch) use a second one
+  git pushes (the release commit, the tags and the `vN` branch) use a second one
   (Contents, Workflows), passed as `RELEASE_GIT_TOKEN`: moving `vN` across
   commits that change `.github/workflows/` needs the Workflows permission,
   which the job's `GITHUB_TOKEN` can't have. The job's own token is read-only.

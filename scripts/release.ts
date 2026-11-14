@@ -3,12 +3,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { exec, getExecOutput } from "@actions/exec";
 import pkgJson from "../package.json" with { type: "json" };
+import { pushRelease, realignReleaseLine } from "./release-line.ts";
 
 // The action's publish step. Users take the action from a tag or the release
 // line branch (vN), never main, because dist/ only exists in release commits:
 // build, commit dist/ on a detached HEAD, tag it vX.Y.Z (shiprig tag), move the
-// vN branch to it, and only then report the tag through CHANGESETS_OUTPUT so the
-// action creates its GitHub release.
+// vN branch and the vN tag to it, and only then report the tag through
+// CHANGESETS_OUTPUT so the action creates its GitHub release.
 
 const tag = `v${pkgJson.version}`;
 const releaseLine = `v${pkgJson.version.split(".")[0]}`;
@@ -94,15 +95,25 @@ async function hasGitHubRelease(): Promise<boolean> {
 // that has no changesets pending, and upstream force-moves the release line
 // each time, so a docs merge (or a change merged without a changeset) would
 // put unreleased code into @vN. If this version's tag is already on the
-// remote, the release line isn't touched; but a run that pushed the tag and
-// then failed to create the GitHub release is finished here, by reporting
-// the tag again so the action creates the missing release.
+// remote, the release line only gets repaired (vN moved to that tag when a
+// push left it behind), and a run that pushed the tag and then failed to
+// create the GitHub release is finished here, by reporting the tag again so
+// the action creates the missing release.
 const existing = await getExecOutput(
   "git",
   ["ls-remote", "--tags", "origin", `refs/tags/${tag}`],
   { env: gitEnvFor(githubToken), silent: true },
 );
 if (existing.stdout.trim() !== "") {
+  if (!isPrerelease) {
+    await realignReleaseLine({
+      cwd: process.cwd(),
+      tag,
+      releaseLine,
+      env: gitEnvFor(githubToken),
+      pushEnv,
+    });
+  }
   if (await hasGitHubRelease()) {
     console.log(`${tag} is already released; nothing to do.`);
   } else {
@@ -130,19 +141,12 @@ if (isPrerelease) {
     env: gitEnv,
   });
 } else {
-  await exec(
-    "git",
-    [
-      "push",
-      "--force",
-      "--follow-tags",
-      "origin",
-      `HEAD:refs/heads/${releaseLine}`,
-    ],
-    {
-      env: gitEnv,
-    },
-  );
+  // The release line moves as a branch and as a tag of the same name, both
+  // force-pushed to the release commit: `uses: rigsmith/shiprig-action@v0`
+  // resolves either way, and the moving major tag is what GitHub's guidance
+  // for actions (and Dependabot) expects. One atomic push with the version
+  // tag, so none of them goes out without the others.
+  await pushRelease({ cwd: process.cwd(), tag, releaseLine, env: gitEnv });
 }
 
 reportTag();

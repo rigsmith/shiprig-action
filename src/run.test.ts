@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GitHub } from "./github.ts";
 import {
   branchSlug,
+  firstReleases,
   publishDecision,
   releaseTitle,
   runPublish,
@@ -193,8 +194,9 @@ describe("publish", () => {
     // A stand-in shiprig that publishes nothing and writes no tag events:
     // the real one would reach the npm registry from a test.
     await using fixture = await gitdir({
+      // `tag --dry-run` answers as shiprig does with nothing to tag.
       "fake-shiprig":
-        '#!/bin/sh\ncase "$1" in packages) echo \'{"packages":[]}\' ;; esac\nexit 0\n',
+        '#!/bin/sh\ncase "$1" in packages) echo \'{"packages":[]}\' ;; tag) echo "0 tag(s), 0 already present" ;; esac\nexit 0\n',
       ".changeset/config.json": JSON.stringify({}),
       "package.json": JSON.stringify({
         name: "simple-project",
@@ -1216,6 +1218,535 @@ describe("publish credits from the changelog (a release from commits)", () => {
   );
 });
 
+// A stand-in shiprig with one package, whose `tag --dry-run` fails: what the
+// action sees when it can't tell which tags a publish would create.
+function tagUnreadableFixture(pkg: { name: string; version: string }) {
+  return gitdir({
+    "fake-shiprig": `#!/bin/sh
+case "$1" in
+  packages) echo '${JSON.stringify({
+    packages: [
+      {
+        ...pkg,
+        ecosystem: "node",
+        dir: ".",
+        changelog: "CHANGELOG.md",
+        private: false,
+        ignored: false,
+      },
+    ],
+  })}' ;;
+  tag) echo "tag: something went wrong" >&2; exit 1 ;;
+esac
+exit 0
+`,
+    ".changeset/config.json": JSON.stringify({}),
+    "package.json": JSON.stringify(pkg),
+    "package-lock.json": "",
+  });
+}
+
+describe("publish checks changelog entries first", () => {
+  // Both packages' changelogs, with no entry for the version being released.
+  async function withoutEntries(cwd: string) {
+    await fs.writeFile(
+      path.join(cwd, "packages/pkg-a/CHANGELOG.md"),
+      "# pkg-a\n\n## 0.9.0\n\n- Older\n",
+    );
+    await fs.writeFile(
+      path.join(cwd, "crates/crate-b/CHANGELOG.md"),
+      "# crate-b\n\n## 0.2.0\n\n- Older\n",
+    );
+  }
+
+  it("fails before the publish script runs, naming each package", async () => {
+    await using fixture = await createPolyglotFixture();
+    const cwd = fixture.path;
+    await withoutEntries(cwd);
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+
+    const run = runPublish({
+      script: `touch published && ${process.env.SHIPRIG_BIN} tag`,
+      github: createGithub(cwd),
+      createGithubReleases: true,
+      pushGitTags: true,
+      cwd,
+    });
+    await expect(run).rejects.toThrow(
+      /No changelog entry for the version about to be released: .*Nothing was published/,
+    );
+    const message = await run.catch((err: Error) => err.message);
+    expect(message).toContain("pkg-a@1.0.0 (packages/pkg-a/CHANGELOG.md)");
+    expect(message).toContain("crate-b@0.3.0 (crates/crate-b/CHANGELOG.md)");
+    await expect(fs.access(path.join(cwd, "published"))).rejects.toThrow();
+    const tags = await exec("git", ["tag", "--list"], { nodeOptions: { cwd } });
+    expect(tags.stdout.trim()).toBe("");
+    expect(mockedGithubMethods.repos.createRelease).not.toHaveBeenCalled();
+  });
+
+  it("names the package behind a v<version> tag (a single-package repository)", async () => {
+    await using fixture = await gitdir({
+      ".changeset/config.json": JSON.stringify({
+        privatePackages: { version: true, tag: true },
+      }),
+      "package.json": JSON.stringify({
+        name: "solo",
+        version: "1.0.0",
+        private: true,
+      }),
+      "package-lock.json": "",
+      "CHANGELOG.md": "# solo\n\n## 0.9.0\n\n- Older\n",
+    });
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+
+    await expect(
+      runPublish({
+        script: "touch published",
+        github: createGithub(cwd),
+        createGithubReleases: true,
+        pushGitTags: true,
+        cwd,
+      }),
+    ).rejects.toThrow("solo@1.0.0 (CHANGELOG.md)");
+    await expect(fs.access(path.join(cwd, "published"))).rejects.toThrow();
+  });
+
+  it("fails before the publish script runs when it can't tell what would be tagged", async () => {
+    await using fixture = await tagUnreadableFixture({
+      name: "pkg",
+      version: "1.0.0",
+    });
+    const cwd = fixture.path;
+    await fs.chmod(path.join(cwd, "fake-shiprig"), 0o755);
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    vi.stubEnv("SHIPRIG_BIN", path.join(cwd, "fake-shiprig"));
+
+    await expect(
+      runPublish({
+        script: "touch published",
+        github: createGithub(cwd),
+        createGithubReleases: true,
+        pushGitTags: true,
+        cwd,
+      }),
+    ).rejects.toThrow(
+      /Couldn't read which tags `shiprig tag --dry-run` would create.*Nothing was published/,
+    );
+    await expect(fs.access(path.join(cwd, "published"))).rejects.toThrow();
+  });
+
+  it.each(["generate", "skip"] as const)(
+    "warns and publishes when it can't tell what would be tagged, with release-notes-fallback: %s",
+    async (releaseNotesFallback) => {
+      await using fixture = await tagUnreadableFixture({
+        name: "pkg",
+        version: "1.0.0",
+      });
+      const cwd = fixture.path;
+      await fs.chmod(path.join(cwd, "fake-shiprig"), 0o755);
+      await updateGithubContext(cwd);
+      vi.stubEnv("RUNNER_TEMP", cwd);
+      vi.stubEnv("SHIPRIG_BIN", path.join(cwd, "fake-shiprig"));
+
+      await runPublish({
+        script: "touch published",
+        github: createGithub(cwd),
+        createGithubReleases: true,
+        pushGitTags: true,
+        releaseNotesFallback,
+        cwd,
+      });
+
+      await fs.access(path.join(cwd, "published"));
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining(
+          `changelog entries weren't checked before publishing (release-notes-fallback: ${releaseNotesFallback})`,
+        ),
+      );
+    },
+  );
+
+  it("doesn't check when no GitHub releases are created", async () => {
+    await using fixture = await createPolyglotFixture();
+    const cwd = fixture.path;
+    await withoutEntries(cwd);
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+
+    const result = await runPublish({
+      script: `${process.env.SHIPRIG_BIN} tag`,
+      github: createGithub(cwd),
+      createGithubReleases: false,
+      pushGitTags: false,
+      cwd,
+    });
+    expect(result.published).toBe(true);
+  });
+
+  it("lets GitHub generate the notes with release-notes-fallback: generate", async () => {
+    await using fixture = await createPolyglotFixture();
+    const cwd = fixture.path;
+    // Only pkg-a's entry is missing; crate-b keeps its notes.
+    await fs.writeFile(
+      path.join(cwd, "packages/pkg-a/CHANGELOG.md"),
+      "# pkg-a\n\n## 0.9.0\n\n- Older\n",
+    );
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+
+    const result = await runPublish({
+      script: `${process.env.SHIPRIG_BIN} tag`,
+      github: createGithub(cwd),
+      createGithubReleases: true,
+      pushGitTags: false,
+      releaseNotesFallback: "generate",
+      cwd,
+    });
+
+    expect(result.published).toBe(true);
+    const calls = mockedGithubMethods.repos.createRelease.mock.calls.map(
+      ([arg]) => arg,
+    );
+    const pkgA = calls.find((c) => c.tag_name === "pkg-a@1.0.0");
+    expect(pkgA).toMatchObject({ generate_release_notes: true });
+    expect(pkgA).not.toHaveProperty("body");
+    expect(calls.find((c) => c.tag_name === "crate-b@0.3.0")?.body).toContain(
+      "Rust first release",
+    );
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining("pkg-a@1.0.0 (packages/pkg-a/CHANGELOG.md)"),
+    );
+  });
+
+  it('comments "released in" only for the packages that got a release', async () => {
+    await using fixture = await createPolyglotFixture();
+    const cwd = fixture.path;
+    await withoutEntries(cwd);
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+
+    // Both releases are skipped, so there's no release to link: no comment
+    // is attempted (the comment step starts by reading the release commit).
+    await runPublish({
+      script: `${process.env.SHIPRIG_BIN} tag`,
+      github: createGithub(cwd),
+      createGithubReleases: true,
+      pushGitTags: true,
+      commentReleasedPrs: true,
+      releaseNotesFallback: "skip",
+      cwd,
+    });
+
+    expect(mockedGithubMethods.repos.createRelease).not.toHaveBeenCalled();
+    expect(mockedGithubMethods.repos.getCommit).not.toHaveBeenCalled();
+  });
+
+  it("creates no release for it with release-notes-fallback: skip", async () => {
+    await using fixture = await createPolyglotFixture();
+    const cwd = fixture.path;
+    await fs.writeFile(
+      path.join(cwd, "packages/pkg-a/CHANGELOG.md"),
+      "# pkg-a\n\n## 0.9.0\n\n- Older\n",
+    );
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+
+    const result = await runPublish({
+      script: `${process.env.SHIPRIG_BIN} tag`,
+      github: createGithub(cwd),
+      createGithubReleases: true,
+      pushGitTags: false,
+      releaseNotesFallback: "skip",
+      cwd,
+    });
+
+    expect(result.published).toBe(true);
+    expect(
+      mockedGithubMethods.repos.createRelease.mock.calls.map(
+        ([arg]) => arg.tag_name,
+      ),
+    ).toEqual(["crate-b@0.3.0"]);
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining("not creating the pkg-a@1.0.0 release"),
+    );
+  });
+});
+
+// A stand-in shiprig that logs each call: the real `publish --dry-run`
+// would ask the npm registry from a test. Its one package, pkg@1.0.0, would
+// be tagged.
+function dryRunFixture(
+  // null: no changelog at all.
+  changelog: string | null = "# pkg\n\n## 1.0.0\n\n- First\n",
+) {
+  return gitdir({
+    "fake-shiprig": `#!/bin/sh
+echo "$*" >> "$(dirname "$0")/calls.log"
+case "$1" in
+packages) echo '${JSON.stringify({
+      packages: [
+        {
+          name: "pkg",
+          version: "1.0.0",
+          ecosystem: "node",
+          dir: ".",
+          changelog: "CHANGELOG.md",
+          private: false,
+          ignored: false,
+        },
+      ],
+    })}' ;;
+tag) printf 'would tag pkg@1.0.0\\n\\n1 tag(s), 0 already present\\n' ;;
+esac
+exit 0
+`,
+    ".changeset/config.json": JSON.stringify({}),
+    "package.json": JSON.stringify({ name: "pkg", version: "1.0.0" }),
+    "package-lock.json": "",
+    ...(changelog === null ? {} : { "CHANGELOG.md": changelog }),
+  });
+}
+
+describe("dry run", () => {
+  it("publishes, pushes, tags and releases nothing", async () => {
+    await using fixture = await dryRunFixture();
+    const cwd = fixture.path;
+    await fs.chmod(path.join(cwd, "fake-shiprig"), 0o755);
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    vi.stubEnv("SHIPRIG_BIN", path.join(cwd, "fake-shiprig"));
+    const github = createGithub(cwd);
+    const pushTag = vi.spyOn(github, "pushTag");
+
+    const result = await runPublish({
+      script: "touch published",
+      github,
+      createGithubReleases: true,
+      pushGitTags: true,
+      commentReleasedPrs: true,
+      dryRun: true,
+      cwd,
+    });
+
+    expect(result).toEqual({
+      published: false,
+      exitCode: 0,
+      wouldRelease: [
+        { name: "pkg", version: "1.0.0", tag: "pkg@1.0.0", release: true },
+      ],
+    });
+    // The custom script never ran; shiprig's own dry run did.
+    await expect(fs.access(path.join(cwd, "published"))).rejects.toThrow();
+    const calls = await fs.readFile(path.join(cwd, "calls.log"), "utf8");
+    expect(calls).toContain("publish --dry-run");
+    expect(calls).not.toMatch(/^publish --yes/m);
+    expect(calls).not.toMatch(/^tag$/m);
+    expect(pushTag).not.toHaveBeenCalled();
+    expect(mockedGithubMethods.repos.createRelease).not.toHaveBeenCalled();
+    expect(mockedGithubMethods.repos.getCommit).not.toHaveBeenCalled();
+    expect(mockedGithubMethods.issues.createComment).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["no entry, with release-notes-fallback: skip", "# pkg\n\n## 0.9.0\n"],
+    ["no changelog", null],
+  ])(
+    "reports no GitHub release where a real run creates none (%s)",
+    async (_, changelog) => {
+      await using fixture = await dryRunFixture(changelog);
+      const cwd = fixture.path;
+      await fs.chmod(path.join(cwd, "fake-shiprig"), 0o755);
+      await updateGithubContext(cwd);
+      vi.stubEnv("RUNNER_TEMP", cwd);
+      vi.stubEnv("SHIPRIG_BIN", path.join(cwd, "fake-shiprig"));
+
+      const result = await runPublish({
+        github: createGithub(cwd),
+        createGithubReleases: true,
+        pushGitTags: true,
+        releaseNotesFallback: "skip",
+        dryRun: true,
+        cwd,
+      });
+
+      expect(result).toMatchObject({
+        wouldRelease: [{ tag: "pkg@1.0.0", release: false }],
+      });
+    },
+  );
+
+  it("says it can't tell, not \"nothing\", when the tags can't be read", async () => {
+    await using fixture = await tagUnreadableFixture({
+      name: "pkg",
+      version: "1.0.0",
+    });
+    const cwd = fixture.path;
+    await fs.chmod(path.join(cwd, "fake-shiprig"), 0o755);
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    vi.stubEnv("SHIPRIG_BIN", path.join(cwd, "fake-shiprig"));
+
+    const result = await runPublish({
+      github: createGithub(cwd),
+      createGithubReleases: false,
+      pushGitTags: true,
+      dryRun: true,
+      cwd,
+    });
+
+    expect(result).toEqual({ published: false, exitCode: 0 });
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining("can't say what a real run would tag or release"),
+    );
+  });
+
+  it("still fails on a missing changelog entry, as the real run would", async () => {
+    await using fixture = await createPolyglotFixture();
+    const cwd = fixture.path;
+    await fs.writeFile(
+      path.join(cwd, "packages/pkg-a/CHANGELOG.md"),
+      "# pkg-a\n\n## 0.9.0\n\n- Older\n",
+    );
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+
+    await expect(
+      runPublish({
+        github: createGithub(cwd),
+        createGithubReleases: true,
+        pushGitTags: true,
+        dryRun: true,
+        cwd,
+      }),
+    ).rejects.toThrow("pkg-a@1.0.0");
+  });
+
+  it("opens, updates and pushes no version PR, and writes nothing", async () => {
+    await using fixture = await createSimpleProjectFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    await writeChangesets(
+      [
+        {
+          releases: [
+            { name: "changesets-dev-simple-project-pkg-a", type: "minor" },
+          ],
+          summary: "Awesome feature",
+        },
+      ],
+      cwd,
+    );
+    const status = async () =>
+      (await exec("git", ["status", "--porcelain"], { nodeOptions: { cwd } }))
+        .stdout;
+    const before = await status();
+    const github = createGithub(cwd);
+    const pushChanges = vi.spyOn(github, "pushChanges");
+    const prepareBranch = vi.spyOn(github, "prepareBranch");
+
+    const result = await runVersion({
+      script: "touch versioned",
+      github,
+      cwd,
+      dryRun: true,
+    });
+
+    expect(result).toEqual({
+      pullRequestNumbers: [],
+      dryRun: [
+        {
+          branch: "changeset-release/some-branch",
+          title: expect.stringMatching(/^chore: release /),
+          pullRequestNumber: undefined,
+          held: false,
+        },
+      ],
+    });
+    expect(await status()).toBe(before);
+    await expect(fs.access(path.join(cwd, "versioned"))).rejects.toThrow();
+    const branches = await exec("git", ["branch", "--list"], {
+      nodeOptions: { cwd },
+    });
+    expect(branches.stdout).not.toContain("changeset-release");
+    expect(prepareBranch).not.toHaveBeenCalled();
+    expect(pushChanges).not.toHaveBeenCalled();
+    expect(commitChangesSinceBase).not.toHaveBeenCalled();
+    expect(mockedGithubMethods.pulls.create).not.toHaveBeenCalled();
+    expect(mockedGithubMethods.pulls.update).not.toHaveBeenCalled();
+    expect(mockedGraphql).not.toHaveBeenCalled();
+  });
+
+  it("reports the version releaseAs sets, not the plan's", async () => {
+    await using fixture = await createSimpleProjectFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    await writeChangesets(
+      [
+        {
+          releases: [
+            { name: "changesets-dev-simple-project-pkg-a", type: "patch" },
+          ],
+          summary: "A fix",
+        },
+      ],
+      cwd,
+    );
+
+    // The plan says 1.0.1; releaseAs makes it 2.0.0.
+    const result = await runVersion({
+      github: createGithub(cwd),
+      cwd,
+      releaseAs: { "changesets-dev-simple-project-pkg-a": "2.0.0" },
+      dryRun: true,
+    });
+
+    expect(result.dryRun?.map((pr) => pr.title)).toEqual([
+      "chore: release 2.0.0",
+    ]);
+  });
+
+  it("names the version PR it would update", async () => {
+    await using fixture = await createSimpleProjectFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    mockedGithubMethods.pulls.list.mockImplementation(() => ({
+      data: [{ number: 42, labels: [] }],
+    }));
+    await writeChangesets(
+      [
+        {
+          releases: [
+            { name: "changesets-dev-simple-project-pkg-a", type: "minor" },
+          ],
+          summary: "Awesome feature",
+        },
+      ],
+      cwd,
+    );
+
+    const result = await runVersion({
+      github: createGithub(cwd),
+      cwd,
+      prTitle: "Release it",
+      dryRun: true,
+    });
+
+    expect(result.dryRun).toEqual([
+      {
+        branch: "changeset-release/some-branch",
+        title: "Release it",
+        pullRequestNumber: 42,
+        held: false,
+      },
+    ]);
+    expect(mockedGraphql).not.toHaveBeenCalled();
+  });
+});
+
 describe("releaseAs", () => {
   const pkg = (name: string, version: string, bump?: string) =>
     ({
@@ -1234,6 +1765,20 @@ describe("releaseAs", () => {
     expect(
       releaseAsArgs({ a: "2.0.0" }, [pkg("a", "1.0.0", "minor")], undefined),
     ).toEqual(["a=2.0.0"]);
+  });
+
+  it("passes an entry at the package's own version when it's a first release", () => {
+    // Not releasing in shiprig's plan, and already at the version: passed
+    // anyway, since it's unreleased. shiprig refuses it if it's out after all.
+    expect(
+      releaseAsArgs({ a: "0.1.0" }, [pkg("a", "0.1.0")], undefined, ["a"]),
+    ).toEqual(["a=0.1.0"]);
+  });
+
+  it("still skips the version it's at once that version is released", () => {
+    expect(
+      releaseAsArgs({ a: "0.1.0" }, [pkg("a", "0.1.0", "minor")], undefined),
+    ).toEqual([]);
   });
 
   it("skips a package that isn't releasing, or is already there", () => {
@@ -1404,6 +1949,137 @@ describe("releaseAs", () => {
         releaseAs: { "changesets-dev-simple-project-pkg-a": "3.0.0" },
       }),
     ).rejects.toThrow("can't be combined with a custom version-script");
+  });
+});
+
+describe("first release at the version on disk", () => {
+  // A single package at 0.1.0 with nothing pending: Zoo UI before 0.1.0.
+  function unreleased(extra: Record<string, string> = {}) {
+    return gitdir({
+      ".changeset/config.json": JSON.stringify({}),
+      "package.json": JSON.stringify({ name: "solo", version: "0.1.0" }),
+      "package-lock.json": "",
+      ...extra,
+    });
+  }
+
+  it("is a package releaseAs names at its own version with no changelog entry", async () => {
+    await using fixture = await unreleased();
+    expect(await firstReleases(fixture.path, { solo: "0.1.0" })).toEqual([
+      "solo",
+    ]);
+  });
+
+  it("isn't one once the changelog has the entry (the version PR merged)", async () => {
+    await using fixture = await unreleased({
+      "CHANGELOG.md": "# solo\n\n## 0.1.0\n\n- First release\n",
+    });
+    expect(await firstReleases(fixture.path, { solo: "0.1.0" })).toEqual([]);
+  });
+
+  it("isn't one once it's tagged", async () => {
+    await using fixture = await unreleased();
+    await exec("git", ["tag", "v0.1.0"], {
+      nodeOptions: { cwd: fixture.path },
+      throwOnError: true,
+    });
+    expect(await firstReleases(fixture.path, { solo: "0.1.0" })).toEqual([]);
+  });
+
+  it("isn't one when it can't tell whether the tag exists", async () => {
+    // No changelog entry, but the tag lookup fails: the tag might be out.
+    await using fixture = await tagUnreadableFixture({
+      name: "solo",
+      version: "0.1.0",
+    });
+    await fs.chmod(path.join(fixture.path, "fake-shiprig"), 0o755);
+    vi.stubEnv("SHIPRIG_BIN", path.join(fixture.path, "fake-shiprig"));
+
+    expect(await firstReleases(fixture.path, { solo: "0.1.0" })).toEqual([]);
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining("isn't treated as a first release"),
+    );
+  });
+
+  it("isn't one when changelogs are off, and says why", async () => {
+    // Without the entry the version PR writes, the merge couldn't tell the
+    // version is ready to publish, and would version it again on every push.
+    await using fixture = await unreleased({
+      ".changeset/config.json": JSON.stringify({ changelog: false }),
+    });
+    expect(await firstReleases(fixture.path, { solo: "0.1.0" })).toEqual([]);
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining("a first release needs changelogs"),
+    );
+  });
+
+  it("isn't one for another version, or in pre mode", async () => {
+    await using fixture = await unreleased();
+    expect(await firstReleases(fixture.path, { solo: "0.2.0" })).toEqual([]);
+    expect(await firstReleases(fixture.path, undefined)).toEqual([]);
+    await fs.writeFile(
+      path.join(fixture.path, ".changeset/pre.json"),
+      JSON.stringify({ mode: "pre", tag: "next" }),
+    );
+    expect(await firstReleases(fixture.path, { solo: "0.1.0" })).toEqual([]);
+  });
+
+  it("opens a version PR releasing it at that version, titled for it", async () => {
+    // A stand-in shiprig for the version step: shiprig 1.23.0 refuses
+    // --release-as at the current version, which the rigsmith change allows.
+    // The rest answers as shiprig does for a package with nothing pending.
+    await using fixture = await unreleased({
+      "fake-shiprig": `#!/bin/sh
+echo "$*" >> "$(dirname "$0")/calls.log"
+case "$1" in
+  packages) echo '${JSON.stringify({
+    packages: [
+      {
+        name: "solo",
+        version: "0.1.0",
+        ecosystem: "node",
+        dir: ".",
+        changelog: "CHANGELOG.md",
+        private: false,
+        ignored: false,
+      },
+    ],
+  })}' ;;
+  tag) printf 'would tag v0.1.0\\n\\n1 tag(s), 0 already present\\n' ;;
+  status) echo '{"releases":[]}' > "$3" ;;
+  version) printf '# solo\\n\\n## 0.1.0\\n\\n- First release\\n' > CHANGELOG.md ;;
+esac
+exit 0
+`,
+    });
+    const cwd = fixture.path;
+    await fs.chmod(path.join(cwd, "fake-shiprig"), 0o755);
+    await exec("git", ["add", "-A"], { nodeOptions: { cwd } });
+    await exec("git", ["commit", "-m", "fake shiprig"], {
+      nodeOptions: { cwd },
+    });
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    vi.stubEnv("SHIPRIG_BIN", path.join(cwd, "fake-shiprig"));
+    mockedGithubMethods.pulls.create.mockImplementationOnce(() => ({
+      data: { number: 9 },
+    }));
+
+    const result = await runVersion({
+      github: createGithub(cwd),
+      cwd,
+      releaseAs: { solo: "0.1.0" },
+    });
+
+    const calls = await fs.readFile(path.join(cwd, "calls.log"), "utf8");
+    expect(calls).toContain("version --yes --release-as solo=0.1.0");
+    expect(result).toMatchObject({
+      pullRequestNumber: 9,
+      versions: [{ name: "solo", from: "0.1.0", to: "0.1.0" }],
+    });
+    const [pr] = mockedGithubMethods.pulls.create.mock.calls[0];
+    expect(pr.title).toBe("chore: release 0.1.0");
+    expect(pr.body).toContain("## solo@0.1.0\n\n- First release");
   });
 });
 
