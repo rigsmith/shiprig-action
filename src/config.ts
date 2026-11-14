@@ -26,6 +26,7 @@ export type ActionConfig = {
   // Package name → the exact version to release it at. File-only.
   releaseAs?: Record<string, string>;
   separatePullRequests?: boolean;
+  releaseNotesFallback?: "error" | "generate" | "skip";
 };
 
 // Each key, its type, and the input it stands in for.
@@ -43,6 +44,10 @@ export const CONFIG_KEYS = {
   // A map has no single-line input form, so it's set in the file only.
   releaseAs: { type: "versions", input: null },
   separatePullRequests: { type: "boolean", input: "separate-pull-requests" },
+  releaseNotesFallback: {
+    type: ["error", "generate", "skip"],
+    input: "release-notes-fallback",
+  },
 } as const satisfies Record<
   keyof ActionConfig,
   | { type: "string" | "boolean" | readonly string[]; input: string }

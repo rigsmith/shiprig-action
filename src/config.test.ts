@@ -59,6 +59,7 @@ describe("parseConfig", () => {
         createGithubReleases: false,
         pushGitTags: true,
         pushWithGitCli: true,
+        releaseNotesFallback: "generate",
       }),
       "f",
     );
@@ -71,6 +72,7 @@ describe("parseConfig", () => {
       createGithubReleases: false,
       pushGitTags: true,
       pushWithGitCli: true,
+      releaseNotesFallback: "generate",
     });
   });
 
@@ -84,6 +86,10 @@ describe("parseConfig", () => {
       '"publishOn" must be "version-pr-merge" or "every-push"',
     ],
     [{ prDraft: true }, '"prDraft" must be "always" or "create"'],
+    [
+      { releaseNotesFallback: "ignore" },
+      '"releaseNotesFallback" must be "error" or "generate" or "skip"',
+    ],
     [{ toString: "x" }, 'unknown key "toString"'],
     [{ constructor: "x" }, 'unknown key "constructor"'],
     [{ $schema: 1 }, '"$schema" must be a non-empty string'],

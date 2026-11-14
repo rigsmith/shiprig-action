@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { firstReleases } from "../run.ts";
 import { execShiprig, hasChangesetFiles, readReleasePlan } from "../shiprig.ts";
 
 export type ModeResult =
@@ -17,13 +18,20 @@ export type ModeResult =
 
 export type PublishPlan = unknown[];
 
-export async function getMode(cwd: string): Promise<ModeResult> {
+export async function getMode(
+  cwd: string,
+  releaseAs?: Record<string, string>,
+): Promise<ModeResult> {
   // shiprig's plan says whether a release is pending, from changesets or
   // conventional commits alike (upstream reads the changeset files). Files
   // that release nothing (empty, or naming only ignored packages) leave
   // nothing to version and nothing to publish yet, as upstream has it.
   const releases = await readReleasePlan(cwd);
   if (releases.some((r) => r.type !== "none")) {
+    return { mode: "version" };
+  }
+  // A releaseAs entry at a package's own unreleased version: a first release.
+  if ((await firstReleases(cwd, releaseAs)).length > 0) {
     return { mode: "version" };
   }
   if (await hasChangesetFiles(cwd)) {

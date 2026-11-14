@@ -66,6 +66,10 @@
     "pushWithGitCli": {
       "type": "boolean",
       "description": "Push with the Git CLI instead of the GitHub API (input push-with-git-cli). Default: false."
+    },
+    "releaseNotesFallback": {
+      "enum": ["error", "generate", "skip"],
+      "description": "What a GitHub release does when its package's changelog has no entry for the version (input release-notes-fallback): fail before anything is published (`error`), use notes GitHub generates (`generate`), or create no release (`skip`). Default: `error`."
     }
   }
 }

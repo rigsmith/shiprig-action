@@ -71,6 +71,24 @@ inputs:
       as changesets/action does, relying on the publish script to skip what's already out.
       Can also be set as `publishOn` in `shiprig-action.jsonc`; this input wins over the file.
     required: false
+  release-notes-fallback:
+    description: >
+      What a GitHub release does when its package's CHANGELOG has no entry for the version.
+      `error` (the default): the run fails before the publish script runs, naming each package,
+      so nothing is published. `generate`: the release gets notes GitHub generates from the
+      merged pull requests. `skip`: no release is created. Either of the last two warns instead
+      of failing. Can also be set as `releaseNotesFallback` in `shiprig-action.jsonc`; this
+      input wins over the file.
+    required: false
+  dry-run:
+    description: >
+      Rehearse the run without changing anything. The version path runs `shiprig version --dry-run`
+      and logs the version PR it would open or update; the publish path checks changelog entries,
+      runs `shiprig publish --dry-run` and logs the tags and releases it would create. Nothing is
+      committed, pushed, tagged, published or released, and no PR is opened, updated or closed.
+      A custom `version-script` or `publish-script` isn't run, since the action can't know it
+      honors a dry-run flag; shiprig's own dry run stands in for it. Defaults to `false`.
+    required: false
   push-with-git-cli:
     description: >
       Whether to use the Git CLI instead of the GitHub API to push release commits and tags.

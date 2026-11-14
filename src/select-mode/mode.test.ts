@@ -29,6 +29,19 @@ describe("select-mode", () => {
     expect(await getMode(fixture.path)).toEqual({ mode: "version" });
   });
 
+  it("versions a first release releaseAs names at the version on disk", async () => {
+    // No changesets at all, as in a repository before its first release.
+    await using fixture = await gitdir({
+      ".changeset/config.json": "{}",
+      "package.json": JSON.stringify({ name: "solo", version: "0.1.0" }),
+      "package-lock.json": "",
+    });
+    vi.stubEnv("RUNNER_TEMP", fixture.path);
+    expect(await getMode(fixture.path, { solo: "0.1.0" })).toEqual({
+      mode: "version",
+    });
+  });
+
   it("does nothing for changesets that release nothing", async () => {
     await using fixture = await goModule({
       ".changeset/empty.md": "---\n---\n\nNothing to release\n",

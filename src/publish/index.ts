@@ -70,6 +70,8 @@ async function main() {
     createGithubReleases,
     pushGitTags,
     commentReleasedPrs,
+    releaseNotesFallback:
+      resolveSetting(config, "releaseNotesFallback") ?? "error",
     cwd,
   });
 

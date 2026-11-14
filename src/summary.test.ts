@@ -41,6 +41,12 @@ describe("withFinalVersions", () => {
     ]);
   });
 
+  it("shows a first release at the version it already had", () => {
+    expect(
+      withFinalVersions([], [{ name: "solo", from: "0.1.0", to: "0.1.0" }]),
+    ).toEqual([{ name: "solo", type: "first release", newVersion: "0.1.0" }]);
+  });
+
   it("adds a package the run moved that the plan never named", () => {
     const planned = [{ name: "a", type: "patch", newVersion: "2.0.0" }];
     expect(
