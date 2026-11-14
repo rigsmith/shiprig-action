@@ -9,12 +9,15 @@ shiprig-action releases itself, with itself (`.github/workflows/release.yml`).
    writes `CHANGELOG.md`) and points the READMEs' `@vN` examples at the release
    line.
 3. **Merge the version PR** (`chore: release <version>`). The workflow runs `pnpm release`, which:
-   - does nothing if this version's tag is already on the remote, so a push
-     without a new version never moves the release line;
+   - releases nothing if this version's tag is already on the remote, so a
+     push without a new version never moves the release line forward; it
+     only moves the `vN` branch and tag back onto that tag if a failed push
+     or a hand edit left them elsewhere;
    - commits the built `dist/` on a detached release commit;
    - tags it `vX.Y.Z` with `shiprig tag`;
-   - force-pushes the `vN` branch and the `vN` tag to that commit, in one push
-     (prereleases push only their `vX.Y.Z` tag);
+   - pushes the `vX.Y.Z` tag and force-pushes the `vN` branch and `vN` tag to
+     that commit in one atomic push, so a refused ref leaves all three
+     untouched (prereleases push only their `vX.Y.Z` tag);
    - only then reports the tag to the action through `CHANGESETS_OUTPUT`, so a
      failed push never leads to a release.
 

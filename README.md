@@ -98,10 +98,13 @@ package's `CHANGELOG.md` entry for the version. Before running `publish-script`,
 the action asks `shiprig tag --dry-run` which tags the publish would create and
 checks each of those packages' changelogs. If one has no `## <version>` entry,
 the run fails there, naming every such package, with nothing published. A
-package with no changelog file gets no release and isn't checked.
+package with no changelog file gets no release and isn't checked. If the
+action can't read which tags would be created, it can't check either, so the
+run fails there too.
 `release-notes-fallback` changes that: `generate` creates those releases with
 notes GitHub generates from the merged pull requests, and `skip` creates none.
-Either one warns instead of failing.
+Either one warns instead of failing. A package that gets no GitHub release
+isn't named in the "released in" comments.
 
 **"Released in" comments.** Once a release's tags are pushed, each pull request
 whose changeset shipped gets one comment naming the package versions it went
@@ -158,7 +161,9 @@ writes the changelog entry without bumping anything. Merging it publishes
 changelog has no entry for it and its tag doesn't exist. After the version
 PR, the entry is there, so the merge publishes rather than versioning again,
 and the `releaseAs` entry can stay. shiprig itself refuses a version that's
-already on the registry or tagged. This needs a shiprig release that supports
+already on the registry or tagged. With changelogs off (`"changelog": false`), there's no
+entry to mark the version as ready, so the action warns and doesn't treat it as
+a first release, rather than versioning it on every push. This needs a shiprig release that supports
 `--release-as` at the current version.
 
 **A version PR per release group.** `separate-pull-requests: true` (or

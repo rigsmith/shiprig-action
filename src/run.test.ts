@@ -194,8 +194,9 @@ describe("publish", () => {
     // A stand-in shiprig that publishes nothing and writes no tag events:
     // the real one would reach the npm registry from a test.
     await using fixture = await gitdir({
+      // `tag --dry-run` answers as shiprig does with nothing to tag.
       "fake-shiprig":
-        '#!/bin/sh\ncase "$1" in packages) echo \'{"packages":[]}\' ;; esac\nexit 0\n',
+        '#!/bin/sh\ncase "$1" in packages) echo \'{"packages":[]}\' ;; tag) echo "0 tag(s), 0 already present" ;; esac\nexit 0\n',
       ".changeset/config.json": JSON.stringify({}),
       "package.json": JSON.stringify({
         name: "simple-project",
@@ -1217,6 +1218,34 @@ describe("publish credits from the changelog (a release from commits)", () => {
   );
 });
 
+// A stand-in shiprig with one package, whose `tag --dry-run` fails: what the
+// action sees when it can't tell which tags a publish would create.
+function tagUnreadableFixture(pkg: { name: string; version: string }) {
+  return gitdir({
+    "fake-shiprig": `#!/bin/sh
+case "$1" in
+  packages) echo '${JSON.stringify({
+    packages: [
+      {
+        ...pkg,
+        ecosystem: "node",
+        dir: ".",
+        changelog: "CHANGELOG.md",
+        private: false,
+        ignored: false,
+      },
+    ],
+  })}' ;;
+  tag) echo "tag: something went wrong" >&2; exit 1 ;;
+esac
+exit 0
+`,
+    ".changeset/config.json": JSON.stringify({}),
+    "package.json": JSON.stringify(pkg),
+    "package-lock.json": "",
+  });
+}
+
 describe("publish checks changelog entries first", () => {
   // Both packages' changelogs, with no entry for the version being released.
   async function withoutEntries(cwd: string) {
@@ -1285,6 +1314,62 @@ describe("publish checks changelog entries first", () => {
     await expect(fs.access(path.join(cwd, "published"))).rejects.toThrow();
   });
 
+  it("fails before the publish script runs when it can't tell what would be tagged", async () => {
+    await using fixture = await tagUnreadableFixture({
+      name: "pkg",
+      version: "1.0.0",
+    });
+    const cwd = fixture.path;
+    await fs.chmod(path.join(cwd, "fake-shiprig"), 0o755);
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    vi.stubEnv("SHIPRIG_BIN", path.join(cwd, "fake-shiprig"));
+
+    await expect(
+      runPublish({
+        script: "touch published",
+        github: createGithub(cwd),
+        createGithubReleases: true,
+        pushGitTags: true,
+        cwd,
+      }),
+    ).rejects.toThrow(
+      /Couldn't read which tags `shiprig tag --dry-run` would create.*Nothing was published/,
+    );
+    await expect(fs.access(path.join(cwd, "published"))).rejects.toThrow();
+  });
+
+  it.each(["generate", "skip"] as const)(
+    "warns and publishes when it can't tell what would be tagged, with release-notes-fallback: %s",
+    async (releaseNotesFallback) => {
+      await using fixture = await tagUnreadableFixture({
+        name: "pkg",
+        version: "1.0.0",
+      });
+      const cwd = fixture.path;
+      await fs.chmod(path.join(cwd, "fake-shiprig"), 0o755);
+      await updateGithubContext(cwd);
+      vi.stubEnv("RUNNER_TEMP", cwd);
+      vi.stubEnv("SHIPRIG_BIN", path.join(cwd, "fake-shiprig"));
+
+      await runPublish({
+        script: "touch published",
+        github: createGithub(cwd),
+        createGithubReleases: true,
+        pushGitTags: true,
+        releaseNotesFallback,
+        cwd,
+      });
+
+      await fs.access(path.join(cwd, "published"));
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining(
+          `changelog entries weren't checked before publishing (release-notes-fallback: ${releaseNotesFallback})`,
+        ),
+      );
+    },
+  );
+
   it("doesn't check when no GitHub releases are created", async () => {
     await using fixture = await createPolyglotFixture();
     const cwd = fixture.path;
@@ -1337,6 +1422,29 @@ describe("publish checks changelog entries first", () => {
     );
   });
 
+  it('comments "released in" only for the packages that got a release', async () => {
+    await using fixture = await createPolyglotFixture();
+    const cwd = fixture.path;
+    await withoutEntries(cwd);
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+
+    // Both releases are skipped, so there's no release to link: no comment
+    // is attempted (the comment step starts by reading the release commit).
+    await runPublish({
+      script: `${process.env.SHIPRIG_BIN} tag`,
+      github: createGithub(cwd),
+      createGithubReleases: true,
+      pushGitTags: true,
+      commentReleasedPrs: true,
+      releaseNotesFallback: "skip",
+      cwd,
+    });
+
+    expect(mockedGithubMethods.repos.createRelease).not.toHaveBeenCalled();
+    expect(mockedGithubMethods.repos.getCommit).not.toHaveBeenCalled();
+  });
+
   it("creates no release for it with release-notes-fallback: skip", async () => {
     await using fixture = await createPolyglotFixture();
     const cwd = fixture.path;
@@ -1368,36 +1476,44 @@ describe("publish checks changelog entries first", () => {
   });
 });
 
-describe("dry run", () => {
-  it("publishes, pushes, tags and releases nothing", async () => {
-    // A stand-in shiprig that logs each call: the real `publish --dry-run`
-    // would ask the npm registry from a test.
-    await using fixture = await gitdir({
-      "fake-shiprig": `#!/bin/sh
+// A stand-in shiprig that logs each call: the real `publish --dry-run`
+// would ask the npm registry from a test. Its one package, pkg@1.0.0, would
+// be tagged.
+function dryRunFixture(
+  // null: no changelog at all.
+  changelog: string | null = "# pkg\n\n## 1.0.0\n\n- First\n",
+) {
+  return gitdir({
+    "fake-shiprig": `#!/bin/sh
 echo "$*" >> "$(dirname "$0")/calls.log"
 case "$1" in
-  packages) echo '${JSON.stringify({
-    packages: [
-      {
-        name: "pkg",
-        version: "1.0.0",
-        ecosystem: "node",
-        dir: ".",
-        changelog: "CHANGELOG.md",
-        private: false,
-        ignored: false,
-      },
-    ],
-  })}' ;;
-  tag) printf 'would tag pkg@1.0.0\\n\\n1 tag(s), 0 already present\\n' ;;
+packages) echo '${JSON.stringify({
+      packages: [
+        {
+          name: "pkg",
+          version: "1.0.0",
+          ecosystem: "node",
+          dir: ".",
+          changelog: "CHANGELOG.md",
+          private: false,
+          ignored: false,
+        },
+      ],
+    })}' ;;
+tag) printf 'would tag pkg@1.0.0\\n\\n1 tag(s), 0 already present\\n' ;;
 esac
 exit 0
 `,
-      ".changeset/config.json": JSON.stringify({}),
-      "package.json": JSON.stringify({ name: "pkg", version: "1.0.0" }),
-      "package-lock.json": "",
-      "CHANGELOG.md": "# pkg\n\n## 1.0.0\n\n- First\n",
-    });
+    ".changeset/config.json": JSON.stringify({}),
+    "package.json": JSON.stringify({ name: "pkg", version: "1.0.0" }),
+    "package-lock.json": "",
+    ...(changelog === null ? {} : { "CHANGELOG.md": changelog }),
+  });
+}
+
+describe("dry run", () => {
+  it("publishes, pushes, tags and releases nothing", async () => {
+    await using fixture = await dryRunFixture();
     const cwd = fixture.path;
     await fs.chmod(path.join(cwd, "fake-shiprig"), 0o755);
     await updateGithubContext(cwd);
@@ -1419,7 +1535,9 @@ exit 0
     expect(result).toEqual({
       published: false,
       exitCode: 0,
-      wouldRelease: [{ name: "pkg", version: "1.0.0", tag: "pkg@1.0.0" }],
+      wouldRelease: [
+        { name: "pkg", version: "1.0.0", tag: "pkg@1.0.0", release: true },
+      ],
     });
     // The custom script never ran; shiprig's own dry run did.
     await expect(fs.access(path.join(cwd, "published"))).rejects.toThrow();
@@ -1431,6 +1549,59 @@ exit 0
     expect(mockedGithubMethods.repos.createRelease).not.toHaveBeenCalled();
     expect(mockedGithubMethods.repos.getCommit).not.toHaveBeenCalled();
     expect(mockedGithubMethods.issues.createComment).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["no entry, with release-notes-fallback: skip", "# pkg\n\n## 0.9.0\n"],
+    ["no changelog", null],
+  ])(
+    "reports no GitHub release where a real run creates none (%s)",
+    async (_, changelog) => {
+      await using fixture = await dryRunFixture(changelog);
+      const cwd = fixture.path;
+      await fs.chmod(path.join(cwd, "fake-shiprig"), 0o755);
+      await updateGithubContext(cwd);
+      vi.stubEnv("RUNNER_TEMP", cwd);
+      vi.stubEnv("SHIPRIG_BIN", path.join(cwd, "fake-shiprig"));
+
+      const result = await runPublish({
+        github: createGithub(cwd),
+        createGithubReleases: true,
+        pushGitTags: true,
+        releaseNotesFallback: "skip",
+        dryRun: true,
+        cwd,
+      });
+
+      expect(result).toMatchObject({
+        wouldRelease: [{ tag: "pkg@1.0.0", release: false }],
+      });
+    },
+  );
+
+  it("says it can't tell, not \"nothing\", when the tags can't be read", async () => {
+    await using fixture = await tagUnreadableFixture({
+      name: "pkg",
+      version: "1.0.0",
+    });
+    const cwd = fixture.path;
+    await fs.chmod(path.join(cwd, "fake-shiprig"), 0o755);
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    vi.stubEnv("SHIPRIG_BIN", path.join(cwd, "fake-shiprig"));
+
+    const result = await runPublish({
+      github: createGithub(cwd),
+      createGithubReleases: false,
+      pushGitTags: true,
+      dryRun: true,
+      cwd,
+    });
+
+    expect(result).toEqual({ published: false, exitCode: 0 });
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining("can't say what a real run would tag or release"),
+    );
   });
 
   it("still fails on a missing changelog entry, as the real run would", async () => {
@@ -1507,6 +1678,35 @@ exit 0
     expect(mockedGithubMethods.pulls.create).not.toHaveBeenCalled();
     expect(mockedGithubMethods.pulls.update).not.toHaveBeenCalled();
     expect(mockedGraphql).not.toHaveBeenCalled();
+  });
+
+  it("reports the version releaseAs sets, not the plan's", async () => {
+    await using fixture = await createSimpleProjectFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    await writeChangesets(
+      [
+        {
+          releases: [
+            { name: "changesets-dev-simple-project-pkg-a", type: "patch" },
+          ],
+          summary: "A fix",
+        },
+      ],
+      cwd,
+    );
+
+    // The plan says 1.0.1; releaseAs makes it 2.0.0.
+    const result = await runVersion({
+      github: createGithub(cwd),
+      cwd,
+      releaseAs: { "changesets-dev-simple-project-pkg-a": "2.0.0" },
+      dryRun: true,
+    });
+
+    expect(result.dryRun?.map((pr) => pr.title)).toEqual([
+      "chore: release 2.0.0",
+    ]);
   });
 
   it("names the version PR it would update", async () => {
@@ -1784,6 +1984,33 @@ describe("first release at the version on disk", () => {
       throwOnError: true,
     });
     expect(await firstReleases(fixture.path, { solo: "0.1.0" })).toEqual([]);
+  });
+
+  it("isn't one when it can't tell whether the tag exists", async () => {
+    // No changelog entry, but the tag lookup fails: the tag might be out.
+    await using fixture = await tagUnreadableFixture({
+      name: "solo",
+      version: "0.1.0",
+    });
+    await fs.chmod(path.join(fixture.path, "fake-shiprig"), 0o755);
+    vi.stubEnv("SHIPRIG_BIN", path.join(fixture.path, "fake-shiprig"));
+
+    expect(await firstReleases(fixture.path, { solo: "0.1.0" })).toEqual([]);
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining("isn't treated as a first release"),
+    );
+  });
+
+  it("isn't one when changelogs are off, and says why", async () => {
+    // Without the entry the version PR writes, the merge couldn't tell the
+    // version is ready to publish, and would version it again on every push.
+    await using fixture = await unreleased({
+      ".changeset/config.json": JSON.stringify({ changelog: false }),
+    });
+    expect(await firstReleases(fixture.path, { solo: "0.1.0" })).toEqual([]);
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining("a first release needs changelogs"),
+    );
   });
 
   it("isn't one for another version, or in pre mode", async () => {

@@ -165,12 +165,14 @@ async function main() {
       });
 
       if (dryRun) {
-        const would = result.published ? [] : (result.wouldRelease ?? []);
+        const would = result.published ? [] : result.wouldRelease;
         await writeSummary(
           reasonSummary(
-            would.length
-              ? `Dry run: a real run would release ${would.map((p) => `${p.name}@${p.version} (${p.tag})`).join(", ")}.`
-              : "Dry run: a real run would release nothing.",
+            would === undefined
+              ? "Dry run: the action couldn't read which tags a real run would create; `shiprig publish --dry-run` in the log shows what shiprig would publish."
+              : would.length
+                ? `Dry run: a real run would release ${would.map((p) => `${p.name}@${p.version} (${p.tag}${p.release ? "" : ", no GitHub release"})`).join(", ")}.`
+                : "Dry run: a real run would release nothing.",
           ),
         );
         if (result.exitCode !== 0) {
