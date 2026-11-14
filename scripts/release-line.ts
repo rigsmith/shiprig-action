@@ -1,4 +1,5 @@
 import { exec, getExecOutput, type ExecOptions } from "@actions/exec";
+import semver from "semver";
 
 // The release line (vN) as a branch and a tag of the same name, both on the
 // latest stable release's commit. Kept apart from release.ts, which runs at
@@ -37,8 +38,18 @@ export async function pushRelease({ cwd, tag, releaseLine, env }: Options) {
 
 /**
  * For a release whose tag is already on the remote: moves the vN branch and
- * tag to the tag's commit when either isn't there, as after a push that
- * failed partway or a vN moved by hand. Returns whether it moved them.
+ * tag to the tag's commit when either is missing or behind it, as after a
+ * push that failed partway or a vN moved by hand. Only forward: re-running an
+ * older release finds vN on a newer one and leaves it there, so `@vN` never
+ * goes back to an older build. Returns whether it moved anything.
+ *
+ * Release commits are siblings off main (each is main plus dist/), so "behind"
+ * means the ref's commit is an ancestor of the target (a vN left on main), or
+ * carries a release tag older than this one. A ref that's neither (a newer
+ * release, or a commit it can't place) stops the realign with a warning.
+ *
+ * The push leases each vN ref on the value read here (a missing one on
+ * staying missing), so a release that moves vN meanwhile isn't overwritten.
  * `pushEnv` is asked for only when a push is due, so a run with nothing to
  * repair needs no push token.
  */
@@ -51,19 +62,11 @@ export async function realignReleaseLine({
 }: Options & {
   pushEnv: () => ExecOptions["env"];
 }): Promise<boolean> {
+  // Every release tag (peeled entries included, which a glob lists) and the
+  // vN branch.
   const { stdout } = await getExecOutput(
     "git",
-    [
-      "ls-remote",
-      "origin",
-      // An annotated tag's peeled (^{}) entry, its commit, is listed only
-      // when asked for by name.
-      `refs/tags/${tag}`,
-      `refs/tags/${tag}^{}`,
-      `refs/heads/${releaseLine}`,
-      `refs/tags/${releaseLine}`,
-      `refs/tags/${releaseLine}^{}`,
-    ],
+    ["ls-remote", "origin", `refs/heads/${releaseLine}`, "refs/tags/v*"],
     { cwd, env, silent: true },
   );
   const refs = new Map(
@@ -81,32 +84,77 @@ export async function realignReleaseLine({
   if (target === undefined) {
     throw new Error(`${tag} isn't on the remote`);
   }
-  if (
-    commitOf(`refs/heads/${releaseLine}`) === target &&
-    commitOf(`refs/tags/${releaseLine}`) === target
-  ) {
-    return false;
-  }
-  console.log(
-    `${releaseLine} doesn't point at ${tag}; moving the ${releaseLine} branch and tag to it.`,
-  );
-  const authed = pushEnv();
-  // The release commit isn't on main: fetch it through its tag.
+  const version = tag.slice(1);
+
+  // The commits needed to place each ref: the release commit isn't on main,
+  // and nor is whatever vN names now. Fetched under a scratch namespace.
+  const lineRefs = [`refs/heads/${releaseLine}`, `refs/tags/${releaseLine}`];
+  const existing = lineRefs.filter((ref) => refs.has(ref));
   await exec(
     "git",
-    ["fetch", "--no-tags", "origin", `refs/tags/${tag}:refs/tags/${tag}`],
-    { cwd, env: authed },
+    [
+      "fetch",
+      "--no-tags",
+      "origin",
+      `+refs/tags/${tag}:refs/release-line/target`,
+      ...existing.map((ref, i) => `+${ref}:refs/release-line/current-${i}`),
+    ],
+    { cwd, env, silent: true },
+  );
+
+  const isAncestor = async (a: string, b: string) =>
+    (
+      await getExecOutput("git", ["merge-base", "--is-ancestor", a, b], {
+        cwd,
+        ignoreReturnCode: true,
+        silent: true,
+      })
+    ).exitCode === 0;
+  // The release versions whose tags name this commit.
+  const releasesAt = (commit: string) =>
+    [...refs.keys()]
+      .filter((ref) => /^refs\/tags\/v[^/^]+$/.test(ref))
+      .filter((ref) => commitOf(ref) === commit)
+      .map((ref) => ref.slice("refs/tags/v".length))
+      .filter((v) => semver.valid(v));
+
+  const moves: { ref: string; expected: string }[] = [];
+  for (const ref of lineRefs) {
+    // What the ref holds (a tag object for an annotated tag), and its commit.
+    const value = refs.get(ref);
+    const current = commitOf(ref);
+    if (value === undefined || current === undefined) {
+      moves.push({ ref, expected: "" });
+      continue;
+    }
+    if (current === target) continue;
+    const behind =
+      (await isAncestor(current, target)) ||
+      releasesAt(current).some((v) => semver.lt(v, version));
+    if (!behind) {
+      const at = releasesAt(current);
+      console.warn(
+        `::warning::${ref} is on ${at.length ? `v${at.join(", v")}` : current.slice(0, 7)}, which isn't behind ${tag}; leaving ${releaseLine} where it is rather than moving it back.`,
+      );
+      return false;
+    }
+    moves.push({ ref, expected: value });
+  }
+  if (moves.length === 0) return false;
+
+  console.log(
+    `${releaseLine} doesn't point at ${tag}; moving ${moves.map((m) => m.ref).join(" and ")} to it.`,
   );
   await exec(
     "git",
     [
       "push",
       "--atomic",
+      ...moves.map((m) => `--force-with-lease=${m.ref}:${m.expected}`),
       "origin",
-      `+${target}:refs/heads/${releaseLine}`,
-      `+${target}:refs/tags/${releaseLine}`,
+      ...moves.map((m) => `${target}:${m.ref}`),
     ],
-    { cwd, env: authed },
+    { cwd, env: pushEnv() },
   );
   return true;
 }

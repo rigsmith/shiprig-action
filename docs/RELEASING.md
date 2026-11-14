@@ -11,8 +11,9 @@ shiprig-action releases itself, with itself (`.github/workflows/release.yml`).
 3. **Merge the version PR** (`chore: release <version>`). The workflow runs `pnpm release`, which:
    - releases nothing if this version's tag is already on the remote, so a
      push without a new version never moves the release line forward; it
-     only moves the `vN` branch and tag back onto that tag if a failed push
-     or a hand edit left them elsewhere;
+     only repairs the `vN` branch and tag when one is missing or behind that
+     tag (a failed push, a hand edit), and never moves them back from a newer
+     release, so re-running an older release leaves `@vN` where it is;
    - commits the built `dist/` on a detached release commit;
    - tags it `vX.Y.Z` with `shiprig tag`;
    - pushes the `vX.Y.Z` tag and force-pushes the `vN` branch and `vN` tag to

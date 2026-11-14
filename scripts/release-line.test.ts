@@ -32,6 +32,20 @@ async function releaseRepo() {
   };
 }
 
+// The next release, as release.ts makes one: main moves on, then a detached
+// commit off it is tagged. Release commits are siblings, not ancestors.
+async function nextRelease(work: string, tag: string) {
+  await git(work, "checkout", "main");
+  await git(work, "commit", "--allow-empty", "-m", `work for ${tag}`);
+  await git(work, "push", "origin", "main");
+  await git(work, "checkout", "--detach");
+  await git(work, "commit", "--allow-empty", "-m", tag);
+  await git(work, "tag", "-a", tag, "-m", tag);
+  return (await git(work, "rev-parse", "HEAD")).trim();
+}
+
+const testEnv = () => ({ ...process.env }) as Record<string, string>;
+
 // Each ref on the remote and the commit it names (a tag peeled).
 async function remoteRefs(remote: string) {
   const out = await git(
@@ -133,6 +147,106 @@ describe("realignReleaseLine", () => {
 
     expect(moved).toBe(true);
     expect(pushEnv).toHaveBeenCalled();
+    expect(await remoteRefs(repo.remote.path)).toMatchObject({
+      "refs/heads/v0": repo.release,
+      "refs/tags/v0": repo.release,
+    });
+  });
+
+  it("leaves vN on a newer release when an older one is re-run", async () => {
+    await using repo = await releaseRepo();
+    await git(repo.work.path, "push", "origin", "refs/tags/v0.7.0");
+    const newer = await nextRelease(repo.work.path, "v0.8.0");
+    await pushRelease({
+      cwd: repo.work.path,
+      tag: "v0.8.0",
+      releaseLine: "v0",
+      env: testEnv(),
+    });
+    const pushEnv = vi.fn(testEnv);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    let moved;
+    let warned = "";
+    try {
+      moved = await realignReleaseLine({
+        cwd: repo.work.path,
+        tag: "v0.7.0",
+        releaseLine: "v0",
+        env: testEnv(),
+        pushEnv,
+      });
+    } finally {
+      // Read before restoring: mockRestore clears the recorded calls.
+      warned = warn.mock.calls.flat().join("\n");
+      warn.mockRestore();
+    }
+
+    expect(moved).toBe(false);
+    expect(pushEnv).not.toHaveBeenCalled();
+    expect(warned).toContain("isn't behind v0.7.0");
+    expect(warned).toContain("v0.8.0");
+    expect(await remoteRefs(repo.remote.path)).toMatchObject({
+      "refs/heads/v0": newer,
+      "refs/tags/v0": newer,
+    });
+  });
+
+  it("moves vN forward from an older release to a newer sibling one", async () => {
+    await using repo = await releaseRepo();
+    await pushRelease({
+      cwd: repo.work.path,
+      tag: "v0.7.0",
+      releaseLine: "v0",
+      env: testEnv(),
+    });
+    // v0.8.0's tag went out, but vN stayed on v0.7.0.
+    const newer = await nextRelease(repo.work.path, "v0.8.0");
+    await git(repo.work.path, "push", "origin", "refs/tags/v0.8.0");
+    await using clone = await testdir();
+    await git(
+      clone.path,
+      "clone",
+      "--no-tags",
+      "--single-branch",
+      repo.remote.path,
+      ".",
+    );
+
+    const moved = await realignReleaseLine({
+      cwd: clone.path,
+      tag: "v0.8.0",
+      releaseLine: "v0",
+      env: testEnv(),
+      pushEnv: testEnv,
+    });
+
+    expect(moved).toBe(true);
+    expect(await remoteRefs(repo.remote.path)).toMatchObject({
+      "refs/heads/v0": newer,
+      "refs/tags/v0": newer,
+    });
+  });
+
+  it("restores a missing vN ref", async () => {
+    await using repo = await releaseRepo();
+    await pushRelease({
+      cwd: repo.work.path,
+      tag: "v0.7.0",
+      releaseLine: "v0",
+      env: testEnv(),
+    });
+    await git(repo.work.path, "push", "origin", ":refs/tags/v0");
+
+    const moved = await realignReleaseLine({
+      cwd: repo.work.path,
+      tag: "v0.7.0",
+      releaseLine: "v0",
+      env: testEnv(),
+      pushEnv: testEnv,
+    });
+
+    expect(moved).toBe(true);
     expect(await remoteRefs(repo.remote.path)).toMatchObject({
       "refs/heads/v0": repo.release,
       "refs/tags/v0": repo.release,
