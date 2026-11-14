@@ -252,6 +252,33 @@ export async function readChangelog(
   return lines.slice(start, end < 0 ? undefined : end).join("\n");
 }
 
+/**
+ * The tags a publish would create now: `shiprig tag --dry-run`, which reads
+ * the local tags and reaches no registry. Undefined when the command fails
+ * or prints nothing it can read, so a caller can tell "nothing to tag" from
+ * "couldn't tell".
+ */
+export async function plannedTags(cwd: string): Promise<string[] | undefined> {
+  const out = await getExecOutputShiprig(["tag", "--dry-run"], {
+    cwd,
+    ignoreReturnCode: true,
+    silent: true,
+    // Never write events: this run creates nothing.
+    env: { ...process.env, CHANGESETS_OUTPUT: "" },
+  });
+  if (out.exitCode !== 0) return undefined;
+  const tags = [...out.stdout.matchAll(/^would tag (\S+)$/gim)].map(
+    (m) => m[1],
+  );
+  // "N tag(s)" with no "would tag" lines: the format changed under us.
+  const count = /^(\d+) tag\(s\)/m.exec(out.stdout);
+  if (!count || Number(count[1]) !== tags.length) return undefined;
+  return tags;
+}
+
+/** The bump type the action shows for a first release, which bumps nothing. */
+export const FIRST_RELEASE = "first release";
+
 /** A release in the plan `shiprig status --output` writes. */
 export type PlannedRelease = {
   name: string;

@@ -31,6 +31,15 @@ inputs:
       this option will also always be `true`.
       Defaults to `true`. Can also be set as `pushGitTags` in `shiprig-action.jsonc`; this input wins over the file.
     required: false
+  release-notes-fallback:
+    description: >
+      What a GitHub release does when its package's CHANGELOG has no entry for the version.
+      `error` (the default): the run fails before the publish script runs, naming each package,
+      so nothing is published. `generate`: the release gets notes GitHub generates from the
+      merged pull requests. `skip`: no release is created. Either of the last two warns instead
+      of failing. Can also be set as `releaseNotesFallback` in `shiprig-action.jsonc`; this
+      input wins over the file.
+    required: false
   cwd:
     description: "The working directory to run shiprig (or the custom script) in. Defaults to the root of the repository."
     required: false

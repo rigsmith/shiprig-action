@@ -1,6 +1,7 @@
 import path from "node:path";
 import artifact from "@actions/artifact";
 import * as core from "@actions/core";
+import { loadConfig, resolveSetting } from "../config.ts";
 import { requireShiprig } from "../shiprig.ts";
 import { getOptionalInput } from "../utils.ts";
 import { getMode } from "./mode.ts";
@@ -15,7 +16,8 @@ async function main() {
   await requireShiprig();
   const cwd = getOptionalInput("cwd") || process.cwd();
 
-  const result = await getMode(cwd);
+  const config = await loadConfig(cwd);
+  const result = await getMode(cwd, resolveSetting(config, "releaseAs"));
   core.setOutput("mode", result.mode);
   if (result.mode === "publish") {
     const publishPlanArtifact = await artifact.uploadArtifact(

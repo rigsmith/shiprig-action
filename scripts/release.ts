@@ -7,8 +7,8 @@ import pkgJson from "../package.json" with { type: "json" };
 // The action's publish step. Users take the action from a tag or the release
 // line branch (vN), never main, because dist/ only exists in release commits:
 // build, commit dist/ on a detached HEAD, tag it vX.Y.Z (shiprig tag), move the
-// vN branch to it, and only then report the tag through CHANGESETS_OUTPUT so the
-// action creates its GitHub release.
+// vN branch and the vN tag to it, and only then report the tag through
+// CHANGESETS_OUTPUT so the action creates its GitHub release.
 
 const tag = `v${pkgJson.version}`;
 const releaseLine = `v${pkgJson.version.split(".")[0]}`;
@@ -130,6 +130,10 @@ if (isPrerelease) {
     env: gitEnv,
   });
 } else {
+  // The release line moves as a branch and as a tag of the same name, both
+  // force-pushed to the release commit: `uses: rigsmith/shiprig-action@v0`
+  // resolves either way, and the moving major tag is what GitHub's guidance
+  // for actions (and Dependabot) expects. One push, so they can't part.
   await exec(
     "git",
     [
@@ -138,6 +142,7 @@ if (isPrerelease) {
       "--follow-tags",
       "origin",
       `HEAD:refs/heads/${releaseLine}`,
+      `HEAD:refs/tags/${releaseLine}`,
     ],
     {
       env: gitEnv,

@@ -93,6 +93,16 @@ somewhere, or the action won't know what was released. A tag the script already
 pushed itself is left as it is; a tag the action can't push fails the run,
 since nothing would release it.
 
+**Missing changelog entries.** Each GitHub release takes its notes from the
+package's `CHANGELOG.md` entry for the version. Before running `publish-script`,
+the action asks `shiprig tag --dry-run` which tags the publish would create and
+checks each of those packages' changelogs. If one has no `## <version>` entry,
+the run fails there, naming every such package, with nothing published. A
+package with no changelog file gets no release and isn't checked.
+`release-notes-fallback` changes that: `generate` creates those releases with
+notes GitHub generates from the merged pull requests, and `skip` creates none.
+Either one warns instead of failing.
+
 **"Released in" comments.** Once a release's tags are pushed, each pull request
 whose changeset shipped gets one comment naming the package versions it went
 out in, linked to their releases:
@@ -132,6 +142,24 @@ is below the version; once the package reaches it, the entry is skipped, so it
 can stay in the file until you tidy it. A prerelease sets its own suffix, so
 it waits for a normal release. It's file-only, and a custom `version-script`
 can't take it (pass `--release-as` to shiprig in the script instead).
+
+**A first release at the version on disk.** A package that has never been
+released, already at the version it should first release at (`0.1.0` in its
+manifest), takes a `releaseAs` entry naming that same version:
+
+```jsonc
+{ "releaseAs": { "my-lib": "0.1.0" } }
+```
+
+With no changesets at all, the action still opens a version PR,
+`chore: release 0.1.0`. In it, `shiprig version --release-as my-lib=0.1.0`
+writes the changelog entry without bumping anything. Merging it publishes
+0.1.0. The action counts the version as unreleased while the package's
+changelog has no entry for it and its tag doesn't exist. After the version
+PR, the entry is there, so the merge publishes rather than versioning again,
+and the `releaseAs` entry can stay. shiprig itself refuses a version that's
+already on the registry or tagged. This needs a shiprig release that supports
+`--release-as` at the current version.
 
 **A version PR per release group.** `separate-pull-requests: true` (or
 `separatePullRequests` in `shiprig-action.jsonc`) opens a version PR for each
@@ -188,7 +216,7 @@ keeps its settings in `release-please-config.json`:
   directory the action runs in (`cwd`). More than one is an error that names
   them all.
 - **Keys:** `prTitle`, `commitMessage`, `prDraft`, `prBaseBranch`,
-  `publishOn`, `createGithubReleases`, `pushGitTags`, `pushWithGitCli`, `commentReleasedPrs` and `holdLabel`, each
+  `publishOn`, `createGithubReleases`, `pushGitTags`, `pushWithGitCli`, `commentReleasedPrs`, `holdLabel` and `releaseNotesFallback`, each
   standing in for the input of the same name, and `releaseAs`, which has no
   input. An unknown key or a wrong type
   fails the run; comments and trailing commas are fine.
@@ -254,6 +282,53 @@ A GitHub App token is worth it for two reasons the default token can't cover:
 ```
 
 The App needs Contents and Pull requests (read and write) on the repository.
+
+### Dry runs
+
+`dry-run: true` rehearses a run and changes nothing remotely or in the
+repository:
+
+- **Version path.** It runs `shiprig version --dry-run` and logs the version PR
+  it would open or update, with its title. It doesn't commit, push, or open,
+  update or close any PR.
+- **Publish path.** It checks changelog entries as a real run would, so a
+  missing one still fails. Then it runs `shiprig publish --dry-run` (with
+  `--from-pack-dir` when given) and logs each tag it would push and each release
+  it would create. It doesn't publish, tag, push, release or comment.
+
+A custom `version-script` or `publish-script` **isn't run** in a dry run. The
+action can't know whether a script honors a dry-run flag, and one that ignored
+it would publish for real. shiprig's own dry run stands in for it. To rehearse
+the script too, give it its own dry-run mode and run that in a separate step:
+
+```yaml
+- uses: rigsmith/shiprig-action@v0
+  with:
+    dry-run: ${{ inputs.dry-run }}
+    publish-script: pnpm release
+- if: inputs.dry-run
+  run: pnpm release --dry-run # your script's own flag
+```
+
+The job summary lists what a real run would have done. The `published` output
+stays `"false"`, and `pr-numbers` is `[]`.
+
+### Pinning a version
+
+`@v0` is the 0.x release line. It moves to each new `v0.x.y` release, as both a
+tag and a branch. A release tag (`@v0.6.0`) never moves.
+
+Tags and branches can be moved, though. A release job holds tokens that can
+publish packages and push tags, so the safest reference is a full commit SHA,
+which can't be changed under you. Pin the SHA of a release tag, and note the
+version in a comment so Dependabot or Renovate can update it:
+
+```yaml
+- uses: rigsmith/shiprig-action@d772293dd9b998599464b84f58ca0b1395321396 # v0.6.0
+```
+
+`git ls-remote https://github.com/rigsmith/shiprig-action 'refs/tags/v0.6.0^{}'`
+prints the SHA of a release (the `^{}` line is the commit the tag points to).
 
 ## Installing shiprig
 
@@ -329,23 +404,25 @@ message change: `chore: release 1.2.0` rather than `Version Packages`. Set
 
 <!-- api-start -->
 
-| Inputs                   | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `github-token`           | The GitHub token to use for authentication. Defaults to the GitHub-provided token. To use a custom token, pass it explicitly to this input.                                                                                                                                                                                                                                                                                                                                             |
-| `publish-script`         | The command to use to build and publish packages, e.g. `shiprig publish --yes`. The action sets CHANGESETS_OUTPUT to a file; `shiprig publish` (or `shiprig tag`) writes an event there for each tag it creates, and the action reads them back to push the tags and create releases.                                                                                                                                                                                                   |
-| `version-script`         | The command to update versions, edit CHANGELOGs, and consume changesets. Defaults to `shiprig version --yes`                                                                                                                                                                                                                                                                                                                                                                            |
-| `commit-message`         | The commit message. Defaults to the pull request's default title. Can also be set as `commitMessage` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                                                                                                                                                                                                          |
-| `pr-title`               | The pull request title. Defaults to `chore: release` plus what it releases: `chore: release 1.2.0` when everything shares one version, `chore: release core@1.2.0, ui@0.5.0` for up to three packages, and `chore: release 5 packages` beyond that. Can also be set as `prTitle` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                              |
-| `separate-pull-requests` | Open a version PR per release group (packages that must be versioned together) instead of one for everything, so packages can release on their own schedules, as release-please's `separate-pull-requests`. Needs shiprig 1.22.0. Defaults to `false`. Can also be set as `separatePullRequests` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                              |
-| `hold-label`             | A label on the version PR that stops the action from updating its branch, so it can be edited by hand. Defaults to `release:hold`. Can also be set as `holdLabel` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                                                                                                                                             |
-| `pr-draft`               | Controls draft PR behavior. Use 'create' to create new version PRs as draft, or 'always' to also convert existing version PRs back to draft when updating them. Can also be set as `prDraft` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                                                                                                                  |
-| `pr-base-branch`         | Sets the base branch of the PR. Defaults to `github.ref_name`. Can also be set as `prBaseBranch` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                                                                                                                                                                                                              |
-| `create-github-releases` | Whether to create GitHub releases after publish. Defaults to `true`. Can also be set as `createGithubReleases` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                                                                                                                                                                                                |
-| `comment-released-prs`   | Whether to comment "released in" on each pull request whose changeset shipped, once the tags are pushed. Defaults to `true`. Can also be set as `commentReleasedPrs` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                                                                                                                                          |
-| `push-git-tags`          | Whether to create git tags after publish. If `create-github-releases` is set to `true`, this option will also always be `true`. Defaults to `true`. Can also be set as `pushGitTags` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                                                                                                                          |
-| `publish-on`             | When the publish path runs, once no changesets are pending. `version-pr-merge` (the default): only on the push that merges the version PR (`changeset-release/<base>`), and on a run started by hand (`workflow_dispatch`); other events don't publish. `every-push`: on every push with nothing pending, as changesets/action does, relying on the publish script to skip what's already out. Can also be set as `publishOn` in `shiprig-action.jsonc`; this input wins over the file. |
-| `push-with-git-cli`      | Whether to use the Git CLI instead of the GitHub API to push release commits and tags. Defaults to `false`. When using the GitHub API, commits and tags are signed using GitHub's GPG key and attributed to the user or app that owns the `github-token`. Can also be set as `pushWithGitCli` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                 |
-| `cwd`                    | The working directory to run shiprig in. Defaults to the root of the repository.                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Inputs                   | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `github-token`           | The GitHub token to use for authentication. Defaults to the GitHub-provided token. To use a custom token, pass it explicitly to this input.                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `publish-script`         | The command to use to build and publish packages, e.g. `shiprig publish --yes`. The action sets CHANGESETS_OUTPUT to a file; `shiprig publish` (or `shiprig tag`) writes an event there for each tag it creates, and the action reads them back to push the tags and create releases.                                                                                                                                                                                                                                                                       |
+| `version-script`         | The command to update versions, edit CHANGELOGs, and consume changesets. Defaults to `shiprig version --yes`                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `commit-message`         | The commit message. Defaults to the pull request's default title. Can also be set as `commitMessage` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                                                                                                                                                                                                                                                                              |
+| `pr-title`               | The pull request title. Defaults to `chore: release` plus what it releases: `chore: release 1.2.0` when everything shares one version, `chore: release core@1.2.0, ui@0.5.0` for up to three packages, and `chore: release 5 packages` beyond that. Can also be set as `prTitle` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                                                                                                  |
+| `separate-pull-requests` | Open a version PR per release group (packages that must be versioned together) instead of one for everything, so packages can release on their own schedules, as release-please's `separate-pull-requests`. Needs shiprig 1.22.0. Defaults to `false`. Can also be set as `separatePullRequests` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                                                                                  |
+| `hold-label`             | A label on the version PR that stops the action from updating its branch, so it can be edited by hand. Defaults to `release:hold`. Can also be set as `holdLabel` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                                                                                                                                                                                                                 |
+| `pr-draft`               | Controls draft PR behavior. Use 'create' to create new version PRs as draft, or 'always' to also convert existing version PRs back to draft when updating them. Can also be set as `prDraft` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                                                                                                                                                                                      |
+| `pr-base-branch`         | Sets the base branch of the PR. Defaults to `github.ref_name`. Can also be set as `prBaseBranch` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `create-github-releases` | Whether to create GitHub releases after publish. Defaults to `true`. Can also be set as `createGithubReleases` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                                                                                                                                                                                                                                                                    |
+| `comment-released-prs`   | Whether to comment "released in" on each pull request whose changeset shipped, once the tags are pushed. Defaults to `true`. Can also be set as `commentReleasedPrs` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                                                                                                                                                                                                              |
+| `push-git-tags`          | Whether to create git tags after publish. If `create-github-releases` is set to `true`, this option will also always be `true`. Defaults to `true`. Can also be set as `pushGitTags` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                                                                                                                                                                                              |
+| `publish-on`             | When the publish path runs, once no changesets are pending. `version-pr-merge` (the default): only on the push that merges the version PR (`changeset-release/<base>`), and on a run started by hand (`workflow_dispatch`); other events don't publish. `every-push`: on every push with nothing pending, as changesets/action does, relying on the publish script to skip what's already out. Can also be set as `publishOn` in `shiprig-action.jsonc`; this input wins over the file.                                                                     |
+| `release-notes-fallback` | What a GitHub release does when its package's CHANGELOG has no entry for the version. `error` (the default): the run fails before the publish script runs, naming each package, so nothing is published. `generate`: the release gets notes GitHub generates from the merged pull requests. `skip`: no release is created. Either of the last two warns instead of failing. Can also be set as `releaseNotesFallback` in `shiprig-action.jsonc`; this input wins over the file.                                                                             |
+| `dry-run`                | Rehearse the run without changing anything. The version path runs `shiprig version --dry-run` and logs the version PR it would open or update; the publish path checks changelog entries, runs `shiprig publish --dry-run` and logs the tags and releases it would create. Nothing is committed, pushed, tagged, published or released, and no PR is opened, updated or closed. A custom `version-script` or `publish-script` isn't run, since the action can't know it honors a dry-run flag; shiprig's own dry run stands in for it. Defaults to `false`. |
+| `push-with-git-cli`      | Whether to use the Git CLI instead of the GitHub API to push release commits and tags. Defaults to `false`. When using the GitHub API, commits and tags are signed using GitHub's GPG key and attributed to the user or app that owns the `github-token`. Can also be set as `pushWithGitCli` in `shiprig-action.jsonc`; this input wins over the file.                                                                                                                                                                                                     |
+| `cwd`                    | The working directory to run shiprig in. Defaults to the root of the repository.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 | Outputs              | Description                                                                                                                                                                                                                               |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

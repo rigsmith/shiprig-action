@@ -2,7 +2,7 @@ import * as core from "@actions/core";
 import { context } from "@actions/github";
 import semver from "semver";
 import type { VersionChange } from "./run.ts";
-import type { PlannedRelease } from "./shiprig.ts";
+import { FIRST_RELEASE, type PlannedRelease } from "./shiprig.ts";
 
 // The run's job summary (GITHUB_STEP_SUMMARY): what this run did, readable on
 // the run page without opening the version PR or the logs. Best effort: a
@@ -52,7 +52,8 @@ export function withFinalVersions(
     .filter((v) => !named.has(v.name))
     .map((v) => ({
       name: v.name,
-      type: bumpType(v, "patch"),
+      // At the version it already had: a first release (releaseAs).
+      type: v.from === v.to ? FIRST_RELEASE : bumpType(v, "patch"),
       newVersion: v.to,
     }));
   return [...planned, ...unplanned];
