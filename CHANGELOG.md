@@ -1,5 +1,11 @@
 # shiprig-action
 
+## 0.8.0
+
+### Minor Changes
+
+- [#46](https://github.com/rigsmith/shiprig-action/pull/46) [`3204e8d`](https://github.com/rigsmith/shiprig-action/commit/3204e8df6711173dfc13ecbbc92dda7beb116118) - GitHub releases come from `shiprig forge-release`, so they follow `forgeRelease` in `.changeset/config.json`: one release per package (the default, as before) or, with `"forgeRelease": { "mode": "combined", "name": "Acme ${version}", "tag": "v${version}" }`, one release per version, marked latest. After a publish the action pushes the per-package tags, runs `shiprig forge-release --json` with its `github-token`, and logs each release it created or found already there, with its URL; a failure fails the run with shiprig's message. `dry-run: true` runs `shiprig forge-release --dry-run --json`. The `published` and `published-packages` outputs are unchanged. This is with `release-notes-fallback: error`, the default: `generate` and `skip` keep the action's own per-package releases, exactly as before, and combined mode with either of them fails before publishing. It needs shiprig 1.27.0; with an older shiprig the action creates one release per package itself, as before, and warns to upgrade.
+
 ## 0.7.0
 
 ### Minor Changes
