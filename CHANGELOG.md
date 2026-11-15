@@ -1,5 +1,11 @@
 # shiprig-action
 
+## 0.8.1
+
+### Patch Changes
+
+- [#48](https://github.com/rigsmith/shiprig-action/pull/48) [`9998cad`](https://github.com/rigsmith/shiprig-action/commit/9998cad6aac5597f6435b095d10b12b7d050457e) - Combined GitHub releases work in a checkout with no git credentials (`actions/checkout` with `persist-credentials: false`). `shiprig forge-release` pushes the combined tag (`v${version}`) with plain `git push`, which failed there with `tag v0.2.0: pushing: exit status 128` after the publish and the per-package tags had gone through. The action now gives that one process its `github-token`, as a command-scoped `http.extraheader` in git's environment (`GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n`, for the GitHub server URL and each `origin` push URL on that server), the same way `push-with-git-cli` pushes. The token now goes only to the GitHub server, for `push-with-git-cli` too: an `origin` push URL on another host (a mirror, a self-hosted forge) no longer gets it. The header is masked in the log and never written to `.git/config`, and it replaces a header the checkout persisted rather than adding a second one. `dry-run: true` gets it too: `forge-release --dry-run` looks the combined tag up on `origin`, which a private repository refuses without credentials; it pushes nothing. Other shiprig calls get no credentials. Nothing changes in what a workflow must configure.
+
 ## 0.8.0
 
 ### Minor Changes
