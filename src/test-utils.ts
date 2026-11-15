@@ -235,11 +235,25 @@ function recordRequest(request: IncomingMessage): RecordedRequest {
   };
 }
 
-async function createGitHttpServer(cwd: string) {
+// With `authorization`, a request without exactly that Authorization header
+// gets a 401, as GitHub answers a push with no credentials.
+async function createGitHttpServer(
+  cwd: string,
+  { authorization }: { authorization?: string } = {},
+) {
   const requests: RecordedRequest[] = [];
   const server = http.createServer((request, response) => {
     const recordedRequest = recordRequest(request);
     requests.push(recordedRequest);
+    if (
+      authorization !== undefined &&
+      request.headersDistinct.authorization?.join("\n") !== authorization
+    ) {
+      recordedRequest.status = 401;
+      response.writeHead(401, { "WWW-Authenticate": 'Basic realm="git"' });
+      response.end();
+      return;
+    }
 
     void runGitHttpBackend(cwd, request, response, recordedRequest).catch(
       (error: unknown) => {
@@ -302,11 +316,14 @@ async function createLocalRemote(dir: Fixture) {
   return moveDisposable(stack, fixture);
 }
 
-export async function createGitHttpRemote(files: Fixture) {
+export async function createGitHttpRemote(
+  files: Fixture,
+  options: { authorization?: string } = {},
+) {
   await using stack = new AsyncDisposableStack();
   const fixture = stack.use(await createLocalRemote(files));
   const server = stack.use(
-    await createGitHttpServer(path.dirname(fixture.path)),
+    await createGitHttpServer(path.dirname(fixture.path), options),
   );
 
   return moveDisposable(stack, {

@@ -96,7 +96,14 @@ export class GitHub {
     return this.#githubToken;
   }
 
-  async #getCliAuthEnv(): Promise<Record<string, string>> {
+  /**
+   * The environment that makes a `git push origin` in this checkout use
+   * `github-token`, for this process only: command-scoped `http.extraHeader`
+   * config through GIT_CONFIG_COUNT/KEY_n/VALUE_n, never written to
+   * .git/config. Works in a checkout with no credentials of its own
+   * (`persist-credentials: false`). The header is masked in the log.
+   */
+  async gitPushEnv(): Promise<Record<string, string>> {
     // Make `github-token` authoritative for CLI pushes without changing the
     // repository config. Git may otherwise use checkout's persisted header or
     // credentials embedded in a remote URL, so we need to install command-scoped
@@ -108,6 +115,8 @@ export class GitHub {
     const basic = Buffer.from(`x-access-token:${this.#githubToken}`).toString(
       "base64",
     );
+    // The runner masks the token, not its base64.
+    core.setSecret(basic);
 
     // The environment may already contain command-scoped Git config. Append
     // our KEY_n/VALUE_n entries so those existing settings stay active.
@@ -232,7 +241,7 @@ export class GitHub {
         cwd: this.cwd,
         env: {
           ...process.env,
-          ...(await this.#getCliAuthEnv()),
+          ...(await this.gitPushEnv()),
         } as Record<string, string>,
       });
     }
@@ -328,7 +337,7 @@ export class GitHub {
       cwd: this.cwd,
       env: {
         ...process.env,
-        ...(await this.#getCliAuthEnv()),
+        ...(await this.gitPushEnv()),
       } as Record<string, string>,
     });
   }

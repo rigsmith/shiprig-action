@@ -1,9 +1,11 @@
 import { Buffer } from "node:buffer";
 import fs from "node:fs/promises";
 import path from "node:path";
+import * as core from "@actions/core";
 import { exec } from "tinyexec";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GitHub } from "./github.ts";
+import { forgeRelease } from "./shiprig.ts";
 import {
   createGitHttpRemote,
   describeGitHttpRequests,
@@ -22,6 +24,10 @@ const githubContext = vi.hoisted(() => ({
 vi.mock("@actions/github", () => ({
   context: githubContext,
   getOctokit: () => ({}),
+}));
+vi.mock("@actions/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@actions/core")>()),
+  setSecret: vi.fn(),
 }));
 
 async function git(cwd: string, args: string[]) {
@@ -400,4 +406,120 @@ describe("baseMovedPast", () => {
       "Not Found",
     );
   });
+});
+
+// `shiprig forge-release` in combined mode creates the combined tag and pushes
+// it with plain `git push origin`, the step that failed in a checkout made
+// with `persist-credentials: false`. These run the real push, through
+// forgeRelease's own exec, against a local HTTP remote that, like GitHub,
+// refuses a request without the token.
+describe("forge-release's tag push", () => {
+  const token = "action-token";
+
+  // Stands in for `shiprig forge-release` in combined mode: tags HEAD and
+  // pushes the tag (nothing under --dry-run), then prints its JSON.
+  async function combinedForgeRelease() {
+    const fixture = await testdir({
+      shiprig: `#!/bin/sh
+[ "$1" = forge-release ] || exit 2
+case " $* " in
+*" --dry-run "*) action=would-create ;;
+*)
+  git tag v0.2.0 >&2 || exit 1
+  git push origin v0.2.0 >&2 || { echo '{"message":"tag v0.2.0: pushing: failed"}'; exit 1; }
+  action=created ;;
+esac
+echo '{"mode":"combined","releases":[{"tag":"v0.2.0","name":"v0.2.0","packages":["a"],"action":"'$action'","latest":true,"prerelease":false}]}'
+`,
+    });
+    await fs.chmod(path.join(fixture.path, "shiprig"), 0o755);
+    vi.stubEnv("SHIPRIG_BIN", path.join(fixture.path, "shiprig"));
+    return fixture;
+  }
+
+  // A clone with no credentials of its own: what `persist-credentials: false`
+  // leaves.
+  async function checkout(remote: GitHttpRemote) {
+    const fixture = await shallowClone(remote.path);
+    await git(fixture.path, ["remote", "set-url", "origin", remote.url]);
+    await expect(
+      git(fixture.path, ["config", "--get-regexp", "extraheader"]),
+    ).rejects.toThrow();
+    return fixture;
+  }
+
+  function createAuthRemote() {
+    return createGitHttpRemote(
+      { "file.txt": "initial\n" },
+      { authorization: getAuthorization(token) },
+    );
+  }
+
+  async function remoteTag(remote: GitHttpRemote) {
+    return git(remote.path, ["tag", "--list", "v0.2.0"]);
+  }
+
+  it("fails without the push env, as in a checkout with no credentials", async () => {
+    await using _gitConfig = await isolateGitConfig();
+    await using _shiprig = await combinedForgeRelease();
+    await using remote = await createAuthRemote();
+    await using repository = await checkout(remote);
+
+    await expect(forgeRelease(repository.path, { token })).rejects.toThrow(
+      "tag v0.2.0: pushing: failed",
+    );
+    expect(await remoteTag(remote)).toBe("");
+    expect(remote.requests.map((r) => r.status)).toContain(401);
+  }, 15_000);
+
+  it("reaches the remote with github-token through gitPushEnv, leaving .git/config alone", async () => {
+    await using _gitConfig = await isolateGitConfig();
+    await using _shiprig = await combinedForgeRelease();
+    await using remote = await createAuthRemote();
+    await using repository = await checkout(remote);
+    const github = new GitHub({
+      cwd: repository.path,
+      githubToken: token,
+      serverUrl: new URL(remote.url).origin,
+    });
+
+    let made;
+    try {
+      made = await forgeRelease(repository.path, {
+        token,
+        gitEnv: await github.gitPushEnv(),
+      });
+    } catch (error) {
+      throw new Error(
+        `forge-release failed; the remote saw:\n${describeGitHttpRequests([remote])}`,
+        { cause: error },
+      );
+    }
+
+    expect(made.releases.map((r) => r.action)).toEqual(["created"]);
+    expect(await git(remote.path, ["rev-parse", "refs/tags/v0.2.0"])).toBe(
+      await git(repository.path, ["rev-parse", "v0.2.0"]),
+    );
+    expectRequestsToUseToken(remote, token);
+    // The header is masked, and only that process had it.
+    expect(core.setSecret).toHaveBeenCalledWith(
+      Buffer.from(`x-access-token:${token}`).toString("base64"),
+    );
+    await expect(
+      git(repository.path, ["config", "--get-regexp", "extraheader"]),
+    ).rejects.toThrow();
+  }, 15_000);
+
+  it("pushes nothing in a dry run", async () => {
+    await using _gitConfig = await isolateGitConfig();
+    await using _shiprig = await combinedForgeRelease();
+    await using remote = await createAuthRemote();
+    await using repository = await checkout(remote);
+
+    const made = await forgeRelease(repository.path, { token, dryRun: true });
+
+    expect(made.releases.map((r) => r.action)).toEqual(["would-create"]);
+    expect(remote.requests).toEqual([]);
+    expect(await remoteTag(remote)).toBe("");
+  }, 15_000);
 });

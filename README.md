@@ -120,9 +120,12 @@ the packages share the version the templates use:
 }
 ```
 
-In combined mode shiprig creates and pushes the `v${version}` tag itself (with
-the checkout's git credentials) if it isn't there yet; the per-package tags are
-pushed as before. A release that already exists is left as it is, so a re-run
+In combined mode shiprig creates and pushes the `v${version}` tag itself with
+`git push` if it isn't there yet; the per-package tags are pushed as before. The
+action gives that one `forge-release` process its `github-token` for the push
+(as an `http.extraheader` in git's environment, masked in the log and never
+written to `.git/config`), so a checkout with `persist-credentials: false`
+keeps working. A dry run gets no push credentials. A release that already exists is left as it is, so a re-run
 is safe. If `forge-release` fails, the run fails with shiprig's message, after
 logging any release it made first. `dry-run: true` runs
 `shiprig forge-release --dry-run --json` and logs what it would create; it reads

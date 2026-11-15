@@ -1223,7 +1223,8 @@ describe("publish credits from the changelog (a release from commits)", () => {
 // forge-release call and its GH_TOKEN to calls.log (`forge-release --help`
 // exits with forge-release-help.exit, else 0), and `config show` with
 // config-show.json when there is one; every other command goes to
-// `delegate`, the real shiprig unless a test says otherwise.
+// `delegate`, the real shiprig unless a test says otherwise. Each call's
+// command and GIT_CONFIG_* environment goes to env.log.
 async function wrapShiprig(
   cwd: string,
   {
@@ -1236,6 +1237,7 @@ async function wrapShiprig(
     bin,
     `#!/bin/sh
 dir="$(dirname "$0")"
+echo "$1 $(env | grep '^GIT_CONFIG_' | sort | tr '\n' ' ')" >> "$dir/env.log"
 case "$1" in
 --version) echo "${version}" ;;
 forge-release)
@@ -1315,6 +1317,45 @@ describe("publish makes the GitHub releases with shiprig forge-release", () => {
   async function calls(cwd: string) {
     return fs.readFile(path.join(cwd, "calls.log"), "utf8").catch(() => "");
   }
+
+  // Each shiprig call the wrapper saw, with its GIT_CONFIG_* environment.
+  async function envLog(cwd: string) {
+    return (await fs.readFile(path.join(cwd, "env.log"), "utf8"))
+      .trim()
+      .split("\n");
+  }
+
+  // The header `git push` sends with the action's token (GitHub.gitPushEnv).
+  const basic = Buffer.from("x-access-token:@@GITHUB_TOKEN").toString("base64");
+
+  it("gives forge-release, and no other shiprig call, the token for its tag push", async () => {
+    await using fixture = await createPolyglotFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    vi.stubEnv("GIT_CONFIG_COUNT", "0");
+    await forgeReleaseAnswer(cwd, { releases: [pkgA, crateB] });
+    const setSecret = vi.spyOn(core, "setSecret");
+
+    const { run } = await publish(cwd);
+    await run;
+
+    const log = await envLog(cwd);
+    const forge = log.filter((line) => line.startsWith("forge-release "));
+    expect(forge).toHaveLength(1);
+    // Checkout's own header is reset, then the token's is the only one.
+    expect(forge[0]).toContain(
+      "GIT_CONFIG_KEY_0=http.https://github.com/.extraheader GIT_CONFIG_KEY_1=http.https://github.com/.extraheader",
+    );
+    expect(forge[0]).toContain("GIT_CONFIG_VALUE_0= ");
+    expect(forge[0]).toContain(
+      `GIT_CONFIG_VALUE_1=AUTHORIZATION: basic ${basic}`,
+    );
+    const others = log.filter((line) => !line.startsWith("forge-release "));
+    expect(others.length).toBeGreaterThan(0);
+    for (const line of others) expect(line).not.toContain("extraheader");
+    expect(setSecret).toHaveBeenCalledWith(basic);
+  });
 
   it("pushes the tags, then logs each release it reports, keeping the outputs", async () => {
     await using fixture = await createPolyglotFixture();
@@ -1608,6 +1649,10 @@ describe("publish makes the GitHub releases with shiprig forge-release", () => {
       "forge-release --json --dry-run GH_TOKEN=@@GITHUB_TOKEN",
     );
     expect(log).not.toMatch(/^forge-release --json GH/m);
+    // A dry run pushes nothing, so it gets no push credentials.
+    for (const line of await envLog(cwd)) {
+      expect(line).not.toContain("extraheader");
+    }
     expect(info).toHaveBeenCalledWith(
       "Dry run: `shiprig forge-release` would create the GitHub release pkg@1.0.0 for pkg",
     );
