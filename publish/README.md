@@ -1,6 +1,6 @@
 # rigsmith/shiprig-action/publish
 
-This action publishes packages with shiprig (by default `shiprig publish --yes`), then pushes the git tags it reports and creates their GitHub releases.
+This action publishes packages with shiprig (by default `shiprig publish --yes`), then pushes the git tags it reports and makes their GitHub releases with `shiprig forge-release` (shiprig 1.27.0 and later), following `forgeRelease` in `.changeset/config.json`: one release per package by default, or one combined release per version, with `release-notes-fallback: error` (the default; `generate` and `skip` keep the action's own per-package releases, and combined mode with either fails before publishing). See [GitHub releases](../README.md#github-releases). With an older shiprig it creates one release per package itself, and warns.
 
 With `pack-dir-artifact-id`, it downloads the directory [pack](../pack/README.md) built and runs `shiprig publish --from-pack-dir`: exactly those files are published, in dependency order and under their npm dist-tag, building nothing, and each must still match the sha256 pack recorded. A custom `script` isn't given the directory, so the two can't be combined.
 
