@@ -16,9 +16,14 @@ import type { Octokit } from "./octokit.ts";
 import { commentReleasedPrs as commentReleasedPrsOn } from "./releasedComments.ts";
 import {
   execShiprig,
+  FORGE_RELEASE_SHIPRIG_VERSION,
+  forgeRelease,
+  ForgeReleaseError,
   getExecOutputShiprig,
   listPackages,
   FIRST_RELEASE,
+  hasForgeRelease,
+  type ForgeRelease,
   plannedTags,
   readChangelog,
   readPreState,
@@ -268,6 +273,38 @@ export async function runPublish({
   // the script has run (below), since a custom script may change versions.
   const packagesBefore = await listPackages(cwd);
 
+  // The releases come from `shiprig forge-release` on a shiprig that has it,
+  // with release-notes-fallback `error` only: it has no fallback for a missing
+  // entry, so `generate` and `skip` keep the action's own per-package releases.
+  const forgeReleaseShiprig = createGithubReleases && (await hasForgeRelease());
+  const useForgeRelease =
+    forgeReleaseShiprig && releaseNotesFallback === "error";
+  if (forgeReleaseShiprig && !useForgeRelease) {
+    // Per-package releases can't stand in for a combined one: stop while
+    // nothing has gone out.
+    const config = await readShiprigConfig(cwd);
+    if (config === undefined) {
+      throw new Error(
+        `Couldn't read the changeset config with \`shiprig config show --json\`, so the action can't tell whether \`forgeRelease\` asks for a combined release, which release-notes-fallback: ${releaseNotesFallback} can't make. Nothing was published.`,
+      );
+    }
+    const configured = config.forgeRelease;
+    if (
+      typeof configured === "object" &&
+      configured !== null &&
+      "mode" in configured &&
+      configured.mode === "combined"
+    ) {
+      throw new Error(
+        `\`"forgeRelease": { "mode": "combined" }\` in .changeset/config.json needs release-notes-fallback: error (the default); with release-notes-fallback: ${releaseNotesFallback} the action creates one GitHub release per package itself. Nothing was published. ` +
+          "Set release-notes-fallback to `error`, or remove the combined mode.",
+      );
+    }
+    core.info(
+      `release-notes-fallback: ${releaseNotesFallback}: the action creates one GitHub release per package itself; \`shiprig forge-release\` is used only with release-notes-fallback: error (the default).`,
+    );
+  }
+
   // So is every release's changelog entry: a missing one used to surface
   // only at its GitHub release, after the packages were published and the
   // tags pushed, leaving a release that can't be run again.
@@ -322,6 +359,7 @@ export async function runPublish({
       releaseNotesFallback,
       cwd,
       toTag,
+      useForgeRelease,
     });
   }
 
@@ -387,9 +425,39 @@ export async function runPublish({
     return { pkg, tag: event.tag };
   });
 
-  // The tags whose GitHub release this run created.
-  const withRelease = new Set<string>();
-  if (createGithubReleases || pushGitTags) {
+  // Each package's GitHub release tag, for those this run released: its own
+  // tag, or in combined mode the one release's tag.
+  const releaseTagOf = new Map<string, string>();
+  if (useForgeRelease && releases.length > 0) {
+    // forge-release releases what is tagged at HEAD, so the tags go to GitHub
+    // first; in combined mode it pushes the combined tag itself.
+    if (pushGitTags) {
+      await Promise.all(releases.map(({ tag }) => github.pushTag(tag)));
+    }
+    let made: ForgeRelease[];
+    try {
+      made = (await forgeRelease(cwd, { token: github.getToken() })).releases;
+    } catch (err) {
+      if (err instanceof ForgeReleaseError) logForgeReleases(err.releases);
+      throw err;
+    }
+    logForgeReleases(made);
+    for (const release of made) {
+      for (const name of release.packages) releaseTagOf.set(name, release.tag);
+    }
+  } else if (createGithubReleases || pushGitTags) {
+    // Upgrading changes nothing for `generate` and `skip`, so only `error`
+    // hears about it.
+    if (
+      createGithubReleases &&
+      !forgeReleaseShiprig &&
+      releaseNotesFallback === "error" &&
+      releases.length > 0
+    ) {
+      core.warning(
+        `shiprig ${FORGE_RELEASE_SHIPRIG_VERSION} or later makes the GitHub releases with \`shiprig forge-release\`, following \`forgeRelease\` in .changeset/config.json; this shiprig is older, so the action creates one release per package itself. Upgrade shiprig: https://rigsmith.dev/guide/install`,
+      );
+    }
     await Promise.all(
       releases.map(async ({ pkg, tag }) => {
         if (pushGitTags) {
@@ -403,7 +471,7 @@ export async function runPublish({
               releaseNotesFallback,
             })
           ) {
-            withRelease.add(tag);
+            releaseTagOf.set(pkg.name, tag);
           }
         }
       }),
@@ -414,7 +482,10 @@ export async function runPublish({
   // run creates releases, a package that got none (release-notes-fallback:
   // skip, or no changelog) isn't named, as its link would lead nowhere.
   const commented = createGithubReleases
-    ? releases.filter(({ tag }) => withRelease.has(tag))
+    ? releases.flatMap(({ pkg }) => {
+        const tag = releaseTagOf.get(pkg.name);
+        return tag === undefined ? [] : [{ pkg, tag }];
+      })
     : releases;
   if (commentReleasedPrs && pushGitTags && commented.length) {
     await commentReleasedPrsOn({
@@ -459,6 +530,27 @@ export async function runPublish({
   return { published: false, exitCode: changesetPublishOutput.exitCode };
 }
 
+/** One log line per release `shiprig forge-release` reported. */
+function logForgeReleases(releases: ForgeRelease[]) {
+  for (const r of releases) {
+    const marks = [r.latest && "latest", r.prerelease && "prerelease"].filter(
+      Boolean,
+    );
+    const release = `the GitHub release ${r.tag} for ${r.packages.join(", ")}${
+      marks.length ? ` (${marks.join(", ")})` : ""
+    }`;
+    const line =
+      r.action === "created"
+        ? `Created ${release}`
+        : r.action === "exists"
+          ? `Already there: ${release}`
+          : r.action === "would-create"
+            ? `Dry run: \`shiprig forge-release\` would create ${release}`
+            : `${r.action}: ${release}`;
+    core.info(`${line}${r.url ? `: ${r.url}` : ""}`);
+  }
+}
+
 /**
  * The publish path's dry run: `shiprig publish --dry-run` shows what would go
  * to each registry, and the log says which tags would be pushed and releases
@@ -474,8 +566,10 @@ async function publishDryRun({
   releaseNotesFallback = "error",
   cwd,
   toTag,
+  useForgeRelease,
 }: Omit<PublishOptions, "commentReleasedPrs"> & {
   toTag: { pkg: ShiprigPackage; tag: string }[] | undefined;
+  useForgeRelease: boolean;
 }): Promise<PublishResult> {
   if (script) {
     core.info(
@@ -496,6 +590,20 @@ async function publishDryRun({
       CHANGESETS_OUTPUT: "",
     },
   });
+  if (useForgeRelease) {
+    // It reads the tags at HEAD, which a dry run doesn't create: before the
+    // publish it sees only releases a run already tagged here.
+    const { releases, message } = await forgeRelease(cwd, {
+      token: github.getToken(),
+      dryRun: true,
+    });
+    logForgeReleases(releases);
+    if (releases.length === 0) {
+      core.info(
+        `Dry run: \`shiprig forge-release --dry-run\` has nothing to release yet${message ? ` (${message})` : ""}; a real run makes the GitHub release(s) for what the publish tags, following \`forgeRelease\` in .changeset/config.json.`,
+      );
+    }
+  }
   if (toTag === undefined) {
     // Not "nothing": the action couldn't tell.
     core.warning(
@@ -508,19 +616,22 @@ async function publishDryRun({
   > = [];
   for (const { pkg, tag } of toTag) {
     // As createRelease decides: no changelog, or no entry with `skip`, means
-    // no release.
+    // no release. forge-release makes one whatever the changelog says.
     const changelog = await readChangelog(pkg);
     const hasEntry =
       changelog !== undefined &&
       getChangelogEntry(changelog, pkg.version).found;
     const release =
       createGithubReleases &&
-      changelog !== undefined &&
-      (hasEntry || releaseNotesFallback === "generate");
+      (useForgeRelease ||
+        (changelog !== undefined &&
+          (hasEntry || releaseNotesFallback === "generate")));
     const actions = [
       pushGitTags && `push the tag ${tag}`,
       release &&
-        `create the ${tag} GitHub release${hasEntry ? "" : " with notes GitHub generates"}`,
+        (useForgeRelease
+          ? "make its GitHub release with `shiprig forge-release`"
+          : `create the ${tag} GitHub release${hasEntry ? "" : " with notes GitHub generates"}`),
     ].filter(Boolean);
     core.info(
       `Dry run: ${pkg.name}@${pkg.version} would be released${

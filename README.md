@@ -10,9 +10,10 @@ same flow:
 1. While releases are pending, it keeps a **version PR** open (branch
    `changeset-release/<base>`) that bumps versions and writes changelogs, and
    updates it as more changes land.
-2. When that PR merges, it **publishes**, pushes the **git tags**, and creates a
-   **GitHub release** for each package that has a changelog, using its changelog
-   entry as the release notes.
+2. When that PR merges, it **publishes**, pushes the **git tags**, and makes the
+   **GitHub releases** with `shiprig forge-release`: one per package by default,
+   using its changelog entry as the release notes, or one combined release per
+   version (see [GitHub releases](#github-releases)).
 
 What differs is behind it: the Changesets CLI only knows npm, while shiprig
 versions, publishes and tags every ecosystem it discovers, and can take the
@@ -23,7 +24,9 @@ release from conventional commits instead of, or as well as, changeset files.
 - **shiprig ≥ 1.21.0** on `PATH` in the job (or at `$SHIPRIG_BIN`). The action
   doesn't install it; see [Installing shiprig](#installing-shiprig). It checks
   the version before doing anything, and an older shiprig fails with the
-  minimum named.
+  minimum named. GitHub releases come from `shiprig forge-release`, in shiprig
+  1.27.0 and later; with an older shiprig the action creates one release per
+  package itself, and warns.
 - The repository checked out with enough history for shiprig to find its last
   release tags (`fetch-depth: 0` is simplest).
 - [Job permissions][job-permissions]:
@@ -87,11 +90,48 @@ other way.
 
 The action sets `CHANGESETS_OUTPUT` to a file before running `publish-script`.
 `shiprig publish` writes an event there for each git tag it creates, and the
-action reads them back to push exactly those tags and create their GitHub
-releases. A custom script needs to run `shiprig publish` (or `shiprig tag`)
-somewhere, or the action won't know what was released. A tag the script already
-pushed itself is left as it is; a tag the action can't push fails the run,
-since nothing would release it.
+action reads them back to push exactly those tags. A custom script needs to run
+`shiprig publish` (or `shiprig tag`) somewhere, or the action won't know what was
+released. A tag the script already pushed itself is left as it is; a tag the
+action can't push fails the run, since nothing would release it.
+
+<a id="github-releases"></a>
+
+**GitHub releases.** Once the tags are pushed, the action runs
+`shiprig forge-release --json` with its `github-token`, and logs each release
+it created or found already there, with its URL. shiprig makes the releases for
+the packages whose tag points at the release commit (exactly what the publish
+just tagged), following `forgeRelease` in `.changeset/config.json`. The default,
+`"mode": "per-package"`, is one release per package, tagged `name@version`, with
+its changelog entry as the notes. `"mode": "combined"` makes one release per
+version instead, its tag and title from templates, marked latest, with each
+package's entry under its own heading. Pair it with a changesets `fixed` group so
+the packages share the version the templates use:
+
+```jsonc
+// .changeset/config.json
+{
+  "fixed": [["@acme/core", "@acme/cli"]],
+  "forgeRelease": {
+    "mode": "combined",
+    "name": "Acme ${version}",
+    "tag": "v${version}",
+  },
+}
+```
+
+In combined mode shiprig creates and pushes the `v${version}` tag itself (with
+the checkout's git credentials) if it isn't there yet; the per-package tags are
+pushed as before. A release that already exists is left as it is, so a re-run
+is safe. If `forge-release` fails, the run fails with shiprig's message, after
+logging any release it made first. `dry-run: true` runs
+`shiprig forge-release --dry-run --json` and logs what it would create; it reads
+the tags at the release commit, which a dry run doesn't create, so before a real
+publish it usually has nothing to show yet. With a shiprig older than 1.27.0 the
+action falls back to creating one release per package itself, ignoring
+`forgeRelease`, and warns you to upgrade. All of this is with
+`release-notes-fallback: error`, the default; `generate` and `skip` keep the
+action's own per-package releases (see below).
 
 **Missing changelog entries.** Each GitHub release takes its notes from the
 package's `CHANGELOG.md` entry for the version. Before running `publish-script`,
@@ -103,8 +143,12 @@ action can't read which tags would be created, it can't check either, so the
 run fails there too.
 `release-notes-fallback` changes that: `generate` creates those releases with
 notes GitHub generates from the merged pull requests, and `skip` creates none.
-Either one warns instead of failing. A package that gets no GitHub release
-isn't named in the "released in" comments.
+Either one warns instead of failing. `shiprig forge-release` is used only with
+`error` (the default): with `generate` or `skip` the action keeps creating one
+release per package itself, as above, whatever the shiprig version, and says so
+in the log. Combined releases need `error`, so `forgeRelease.mode: "combined"`
+with `generate` or `skip` fails before publishing. A package that gets no GitHub
+release isn't named in the "released in" comments.
 
 **"Released in" comments.** Once a release's tags are pushed, each pull request
 whose changeset shipped gets one comment naming the package versions it went

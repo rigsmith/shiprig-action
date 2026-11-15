@@ -32,6 +32,13 @@ const execFileAsync = promisify(execFile);
  */
 export const MIN_SHIPRIG_VERSION = "1.21.0";
 
+/**
+ * The first shiprig with `shiprig forge-release`, which makes the GitHub
+ * releases after a publish. Older ones get the action's own per-package
+ * releases instead.
+ */
+export const FORGE_RELEASE_SHIPRIG_VERSION = "1.27.0";
+
 /** The shiprig binary: $SHIPRIG_BIN when set, else `shiprig` on PATH. */
 export function shiprigBin(): string {
   return process.env.SHIPRIG_BIN || "shiprig";
@@ -94,11 +101,7 @@ export function requireShiprig(): Promise<void> {
   checked ??= (async () => {
     let version: string;
     try {
-      const { stdout } = await execFileAsync(shiprigBin(), ["--version"], {
-        timeout: versionCheck.timeoutMs,
-        encoding: "utf8",
-      });
-      version = stdout.trim();
+      version = await shiprigVersion();
     } catch (err) {
       // Not found, killed by the timeout, or a non-zero exit.
       throw tooOld("Running `shiprig --version`", err);
@@ -122,9 +125,125 @@ export function requireShiprig(): Promise<void> {
   return checked;
 }
 
+const versions = new Map<string, Promise<string>>();
+
+/**
+ * What `shiprig --version` prints, trimmed, once per binary. Rejects when it
+ * can't run, exits non-zero or outlasts versionCheck.timeoutMs.
+ */
+export function shiprigVersion(): Promise<string> {
+  const bin = shiprigBin();
+  let version = versions.get(bin);
+  if (!version) {
+    version = execFileAsync(bin, ["--version"], {
+      timeout: versionCheck.timeoutMs,
+      encoding: "utf8",
+    }).then(({ stdout }) => stdout.trim());
+    versions.set(bin, version);
+  }
+  return version;
+}
+
+/**
+ * Whether the shiprig here has `shiprig forge-release`: a release at
+ * FORGE_RELEASE_SHIPRIG_VERSION or later, or a source build (which has no
+ * version to compare) whose `forge-release --help` succeeds. One whose
+ * version can't be read hasn't.
+ */
+export async function hasForgeRelease(): Promise<boolean> {
+  let version: string;
+  try {
+    version = await shiprigVersion();
+  } catch {
+    return false;
+  }
+  if (!version.startsWith("source build")) {
+    return atLeast(version, FORGE_RELEASE_SHIPRIG_VERSION);
+  }
+  try {
+    await execFileAsync(shiprigBin(), ["forge-release", "--help"], {
+      timeout: versionCheck.timeoutMs,
+      encoding: "utf8",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** For tests: forget the cached check. */
 export function resetShiprigCheck() {
   checked = undefined;
+  versions.clear();
+}
+
+/** One release as `shiprig forge-release --json` reports it. */
+export type ForgeRelease = {
+  tag: string;
+  name: string;
+  packages: string[];
+  action: "created" | "exists" | "would-create";
+  url?: string;
+  latest: boolean;
+  prerelease: boolean;
+};
+
+type ForgeReleaseJson = {
+  mode?: string;
+  dryRun?: boolean;
+  releases?: ForgeRelease[];
+  message?: string;
+};
+
+/**
+ * `shiprig forge-release --json`: the GitHub release(s) for the packages
+ * tagged at HEAD, under `forgeRelease` in .changeset/config.json (one per
+ * package, or one combined). Existing releases come back as `exists`. Its
+ * progress goes to the log; a non-zero exit, or JSON it can't read, throws
+ * with shiprig's message, carrying the releases it reported before failing.
+ */
+export async function forgeRelease(
+  cwd: string,
+  { token, dryRun = false }: { token: string; dryRun?: boolean },
+): Promise<{ mode?: string; releases: ForgeRelease[]; message?: string }> {
+  const args = ["forge-release", "--json"];
+  if (dryRun) args.push("--dry-run");
+  const out = await getExecOutputShiprig(args, {
+    cwd,
+    ignoreReturnCode: true,
+    // stdout is only the JSON, so only stderr's progress is shown.
+    silent: true,
+    listeners: { stderr: (data) => process.stderr.write(data) },
+    env: { ...process.env, GH_TOKEN: token, GITHUB_TOKEN: token },
+  });
+  let json: ForgeReleaseJson | undefined;
+  try {
+    const parsed: unknown = JSON.parse(out.stdout);
+    if (typeof parsed === "object" && parsed !== null) {
+      json = parsed as ForgeReleaseJson;
+    }
+  } catch {
+    // Read as no JSON below.
+  }
+  const releases = Array.isArray(json?.releases) ? json.releases : [];
+  if (out.exitCode !== 0 || json === undefined) {
+    throw new ForgeReleaseError(
+      `\`shiprig forge-release\` failed${
+        out.exitCode !== 0 ? ` (exit code ${out.exitCode})` : ""
+      }: ${json?.message || out.stderr.trim() || "it printed no JSON the action can read"}`,
+      releases,
+    );
+  }
+  return { mode: json.mode, releases, message: json.message };
+}
+
+/** A failed `shiprig forge-release`, with what it made before failing. */
+export class ForgeReleaseError extends Error {
+  readonly releases: ForgeRelease[];
+  constructor(message: string, releases: ForgeRelease[]) {
+    super(message);
+    this.releases = releases;
+  }
 }
 
 /**

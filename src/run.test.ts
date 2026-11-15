@@ -1218,6 +1218,409 @@ describe("publish credits from the changelog (a release from commits)", () => {
   );
 });
 
+// A shiprig that reports `version` and answers `forge-release` with
+// forge-release.json (exiting with forge-release.exit, else 0), logging each
+// forge-release call and its GH_TOKEN to calls.log (`forge-release --help`
+// exits with forge-release-help.exit, else 0), and `config show` with
+// config-show.json when there is one; every other command goes to
+// `delegate`, the real shiprig unless a test says otherwise.
+async function wrapShiprig(
+  cwd: string,
+  {
+    version = "1.27.0",
+    delegate = process.env.SHIPRIG_BIN!,
+  }: { version?: string; delegate?: string } = {},
+) {
+  const bin = path.join(cwd, "wrapped-shiprig");
+  await fs.writeFile(
+    bin,
+    `#!/bin/sh
+dir="$(dirname "$0")"
+case "$1" in
+--version) echo "${version}" ;;
+forge-release)
+  if [ "$2" = "--help" ]; then exit "$(cat "$dir/forge-release-help.exit" 2>/dev/null || echo 0)"; fi
+  echo "$* GH_TOKEN=$GH_TOKEN" >> "$dir/calls.log"
+  echo "forge-release: working" >&2
+  cat "$dir/forge-release.json"
+  exit "$(cat "$dir/forge-release.exit" 2>/dev/null || echo 0)" ;;
+config) if [ -f "$dir/config-show.json" ]; then cat "$dir/config-show.json"; else exec "${delegate}" "$@"; fi ;;
+*) exec "${delegate}" "$@" ;;
+esac
+`,
+  );
+  await fs.chmod(bin, 0o755);
+  vi.stubEnv("SHIPRIG_BIN", bin);
+}
+
+function forgeReleaseAnswer(
+  cwd: string,
+  answer: { releases: object[]; message?: string },
+  exitCode = 0,
+) {
+  return Promise.all([
+    fs.writeFile(
+      path.join(cwd, "forge-release.json"),
+      JSON.stringify({ mode: "per-package", dryRun: false, ...answer }),
+    ),
+    fs.writeFile(path.join(cwd, "forge-release.exit"), String(exitCode)),
+  ]);
+}
+
+describe("publish makes the GitHub releases with shiprig forge-release", () => {
+  const pkgA = {
+    tag: "pkg-a@1.0.0",
+    name: "pkg-a@1.0.0",
+    packages: ["pkg-a"],
+    action: "created",
+    url: "https://github.com/changesets/action/releases/tag/pkg-a%401.0.0",
+    latest: false,
+    prerelease: false,
+  };
+  const crateB = {
+    tag: "crate-b@0.3.0",
+    name: "crate-b@0.3.0",
+    packages: ["crate-b"],
+    action: "exists",
+    url: "https://github.com/changesets/action/releases/tag/crate-b%400.3.0",
+    latest: false,
+    prerelease: false,
+  };
+
+  // The real `shiprig tag` writes the tag events `shiprig publish` would.
+  async function publish(
+    cwd: string,
+    options: Partial<Parameters<typeof runPublish>[0]> = {},
+    delegate?: string,
+  ) {
+    const github = createGithub(cwd);
+    const pushTag = vi
+      .spyOn(github, "pushTag")
+      .mockImplementation((tag) =>
+        fs.appendFile(path.join(cwd, "calls.log"), `pushTag ${tag}\n`),
+      );
+    const real = process.env.SHIPRIG_BIN;
+    await wrapShiprig(cwd, { delegate });
+    const run = runPublish({
+      script: `${real} tag`,
+      github,
+      createGithubReleases: true,
+      pushGitTags: true,
+      cwd,
+      ...options,
+    });
+    return { run, pushTag };
+  }
+
+  async function calls(cwd: string) {
+    return fs.readFile(path.join(cwd, "calls.log"), "utf8").catch(() => "");
+  }
+
+  it("pushes the tags, then logs each release it reports, keeping the outputs", async () => {
+    await using fixture = await createPolyglotFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    await forgeReleaseAnswer(cwd, { releases: [pkgA, crateB] });
+    const info = vi.spyOn(core, "info");
+
+    const { run } = await publish(cwd);
+
+    expect(await run).toEqual({
+      published: true,
+      publishedPackages: expect.arrayContaining([
+        { name: "pkg-a", version: "1.0.0" },
+        { name: "crate-b", version: "0.3.0" },
+      ]),
+      released: expect.arrayContaining([
+        { name: "pkg-a", version: "1.0.0", tag: "pkg-a@1.0.0" },
+        { name: "crate-b", version: "0.3.0", tag: "crate-b@0.3.0" },
+      ]),
+      exitCode: 0,
+    });
+    expect(mockedGithubMethods.repos.createRelease).not.toHaveBeenCalled();
+    // Both tags are on GitHub before forge-release reads the tags at HEAD,
+    // and it gets the action's token.
+    const log = (await calls(cwd)).trim().split("\n");
+    expect(log.slice(0, 2).sort()).toEqual([
+      "pushTag crate-b@0.3.0",
+      "pushTag pkg-a@1.0.0",
+    ]);
+    expect(log.slice(2)).toEqual([
+      "forge-release --json GH_TOKEN=@@GITHUB_TOKEN",
+    ]);
+    expect(info).toHaveBeenCalledWith(
+      `Created the GitHub release pkg-a@1.0.0 for pkg-a: ${pkgA.url}`,
+    );
+    expect(info).toHaveBeenCalledWith(
+      `Already there: the GitHub release crate-b@0.3.0 for crate-b: ${crateB.url}`,
+    );
+    expect(core.warning).not.toHaveBeenCalled();
+  });
+
+  it('links "released in" comments to the combined release', async () => {
+    await using fixture = await createPolyglotFixture();
+    const cwd = fixture.path;
+    await fs.writeFile(
+      path.join(cwd, "packages/pkg-a/CHANGELOG.md"),
+      "# pkg-a\n\n## 1.0.0\n\n### Major Changes\n\n- [#31](https://github.com/changesets/action/pull/31) Node first release\n",
+    );
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    await forgeReleaseAnswer(cwd, {
+      releases: [
+        {
+          tag: "v2.0.0",
+          name: "Acme 2.0.0",
+          packages: ["crate-b", "pkg-a"],
+          action: "created",
+          url: "https://github.com/changesets/action/releases/tag/v2.0.0",
+          latest: true,
+          prerelease: false,
+        },
+      ],
+    });
+    const info = vi.spyOn(core, "info");
+
+    const { run } = await publish(cwd, { commentReleasedPrs: true });
+    await run;
+
+    expect(info).toHaveBeenCalledWith(
+      "Created the GitHub release v2.0.0 for crate-b, pkg-a (latest): https://github.com/changesets/action/releases/tag/v2.0.0",
+    );
+    const comments = mockedGithubMethods.issues.createComment.mock.calls;
+    expect(comments.map(([arg]) => arg.issue_number)).toEqual([31]);
+    expect(JSON.stringify(comments[0][0])).toContain("/releases/tag/v2.0.0");
+    expect(JSON.stringify(comments[0][0])).not.toContain("/releases/tag/pkg-a");
+  });
+
+  it("fails the step with shiprig's message, logging what it made first", async () => {
+    await using fixture = await createPolyglotFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    await forgeReleaseAnswer(
+      cwd,
+      {
+        releases: [pkgA],
+        message: "release crate-b@0.3.0 failed: HTTP 403",
+      },
+      1,
+    );
+    const info = vi.spyOn(core, "info");
+
+    const { run } = await publish(cwd, { commentReleasedPrs: true });
+
+    await expect(run).rejects.toThrow(
+      "`shiprig forge-release` failed (exit code 1): release crate-b@0.3.0 failed: HTTP 403",
+    );
+    expect(info).toHaveBeenCalledWith(
+      `Created the GitHub release pkg-a@1.0.0 for pkg-a: ${pkgA.url}`,
+    );
+    expect(mockedGithubMethods.repos.createRelease).not.toHaveBeenCalled();
+    expect(mockedGithubMethods.repos.getCommit).not.toHaveBeenCalled();
+  });
+
+  it("fails the step when it prints no JSON", async () => {
+    await using fixture = await createPolyglotFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    await fs.writeFile(path.join(cwd, "forge-release.json"), "not json");
+
+    const { run } = await publish(cwd);
+
+    await expect(run).rejects.toThrow(
+      "`shiprig forge-release` failed: forge-release: working",
+    );
+  });
+
+  it("creates the releases itself, with a warning, on an older shiprig", async () => {
+    await using fixture = await createPolyglotFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    const github = createGithub(cwd);
+    vi.spyOn(github, "pushTag").mockResolvedValue();
+    const real = process.env.SHIPRIG_BIN;
+    await wrapShiprig(cwd, { version: "1.26.0" });
+
+    const result = await runPublish({
+      script: `${real} tag`,
+      github,
+      createGithubReleases: true,
+      pushGitTags: true,
+      cwd,
+    });
+
+    expect(result.published).toBe(true);
+    expect(await calls(cwd)).not.toContain("forge-release");
+    expect(
+      mockedGithubMethods.repos.createRelease.mock.calls
+        .map(([arg]) => arg.tag_name)
+        .sort(),
+    ).toEqual(["crate-b@0.3.0", "pkg-a@1.0.0"]);
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "shiprig 1.27.0 or later makes the GitHub releases with `shiprig forge-release`",
+      ),
+    );
+  });
+
+  it.each(["generate", "skip"] as const)(
+    "keeps the action's own per-package releases with release-notes-fallback: %s",
+    async (releaseNotesFallback) => {
+      await using fixture = await createPolyglotFixture();
+      const cwd = fixture.path;
+      // pkg-a has no entry for 1.0.0; crate-b keeps its notes.
+      await fs.writeFile(
+        path.join(cwd, "packages/pkg-a/CHANGELOG.md"),
+        "# pkg-a\n\n## 0.9.0\n\n- Older\n",
+      );
+      await updateGithubContext(cwd);
+      vi.stubEnv("RUNNER_TEMP", cwd);
+      const info = vi.spyOn(core, "info");
+
+      const { run } = await publish(cwd, { releaseNotesFallback });
+
+      expect((await run).published).toBe(true);
+      expect(await calls(cwd)).not.toContain("forge-release");
+      const created = mockedGithubMethods.repos.createRelease.mock.calls.map(
+        ([arg]) => arg,
+      );
+      if (releaseNotesFallback === "generate") {
+        expect(created.find((c) => c.tag_name === "pkg-a@1.0.0")).toMatchObject(
+          { generate_release_notes: true },
+        );
+      }
+      expect(created.map((c) => c.tag_name).sort()).toEqual(
+        releaseNotesFallback === "generate"
+          ? ["crate-b@0.3.0", "pkg-a@1.0.0"]
+          : ["crate-b@0.3.0"],
+      );
+      expect(info).toHaveBeenCalledWith(
+        `release-notes-fallback: ${releaseNotesFallback}: the action creates one GitHub release per package itself; \`shiprig forge-release\` is used only with release-notes-fallback: error (the default).`,
+      );
+      expect(core.warning).not.toHaveBeenCalledWith(
+        expect.stringContaining("Upgrade shiprig"),
+      );
+    },
+  );
+
+  it("fails before publishing on a combined release with release-notes-fallback: generate", async () => {
+    await using fixture = await createPolyglotFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    await fs.writeFile(
+      path.join(cwd, "config-show.json"),
+      JSON.stringify({
+        forgeRelease: { mode: "combined", tag: "v${version}" },
+      }),
+    );
+
+    const { run, pushTag } = await publish(cwd, {
+      script: `touch published && ${process.env.SHIPRIG_BIN} tag`,
+      releaseNotesFallback: "generate",
+    });
+
+    await expect(run).rejects.toThrow(
+      /combined.*needs release-notes-fallback: error.*Nothing was published/,
+    );
+    await expect(fs.access(path.join(cwd, "published"))).rejects.toThrow();
+    const tags = await exec("git", ["tag", "--list"], { nodeOptions: { cwd } });
+    expect(tags.stdout.trim()).toBe("");
+    expect(pushTag).not.toHaveBeenCalled();
+    expect(mockedGithubMethods.repos.createRelease).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["has", 0, true],
+    ["lacks", 1, false],
+  ])(
+    "asks a source build whether it %s forge-release",
+    async (_, helpExit, used) => {
+      await using fixture = await createPolyglotFixture();
+      const cwd = fixture.path;
+      await updateGithubContext(cwd);
+      vi.stubEnv("RUNNER_TEMP", cwd);
+      await forgeReleaseAnswer(cwd, { releases: [pkgA, crateB] });
+      await fs.writeFile(
+        path.join(cwd, "forge-release-help.exit"),
+        String(helpExit),
+      );
+      const github = createGithub(cwd);
+      vi.spyOn(github, "pushTag").mockResolvedValue();
+      const real = process.env.SHIPRIG_BIN;
+      await wrapShiprig(cwd, { version: "source build (abc1234)" });
+
+      const result = await runPublish({
+        script: `${real} tag`,
+        github,
+        createGithubReleases: true,
+        pushGitTags: true,
+        cwd,
+      });
+
+      expect(result.published).toBe(true);
+      expect((await calls(cwd)).includes("forge-release --json")).toBe(used);
+      expect(mockedGithubMethods.repos.createRelease).toHaveBeenCalledTimes(
+        used ? 0 : 2,
+      );
+    },
+  );
+
+  it("previews with forge-release --dry-run in a dry run", async () => {
+    await using fixture = await dryRunFixture();
+    const cwd = fixture.path;
+    await fs.chmod(path.join(cwd, "fake-shiprig"), 0o755);
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    await forgeReleaseAnswer(cwd, {
+      releases: [
+        {
+          tag: "pkg@1.0.0",
+          name: "pkg@1.0.0",
+          packages: ["pkg"],
+          action: "would-create",
+          latest: false,
+          prerelease: false,
+        },
+      ],
+    });
+    const info = vi.spyOn(core, "info");
+
+    const { run, pushTag } = await publish(
+      cwd,
+      { dryRun: true },
+      path.join(cwd, "fake-shiprig"),
+    );
+
+    expect(await run).toEqual({
+      published: false,
+      exitCode: 0,
+      wouldRelease: [
+        { name: "pkg", version: "1.0.0", tag: "pkg@1.0.0", release: true },
+      ],
+    });
+    const log = await calls(cwd);
+    expect(log).toContain(
+      "forge-release --json --dry-run GH_TOKEN=@@GITHUB_TOKEN",
+    );
+    expect(log).not.toMatch(/^forge-release --json GH/m);
+    expect(info).toHaveBeenCalledWith(
+      "Dry run: `shiprig forge-release` would create the GitHub release pkg@1.0.0 for pkg",
+    );
+    expect(info).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "would be released; the action would push the tag pkg@1.0.0 and make its GitHub release with `shiprig forge-release`",
+      ),
+    );
+    expect(pushTag).not.toHaveBeenCalled();
+    expect(mockedGithubMethods.repos.createRelease).not.toHaveBeenCalled();
+  });
+});
+
 // A stand-in shiprig with one package, whose `tag --dry-run` fails: what the
 // action sees when it can't tell which tags a publish would create.
 function tagUnreadableFixture(pkg: { name: string; version: string }) {
