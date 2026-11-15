@@ -476,6 +476,17 @@ esac
     await expect(
       git(fixture.path, ["config", "--get-regexp", "extraheader"]),
     ).rejects.toThrow();
+    // shiprig's combined tag is annotated, so it needs a tagger: the identity
+    // the action's ensureGitUser gives a real run. useConfigOnly stops git
+    // falling back to the machine's user and hostname, as macOS does and a
+    // CI runner doesn't, so a missing identity fails here too.
+    await git(fixture.path, ["config", "user.useConfigOnly", "true"]);
+    await git(fixture.path, ["config", "user.name", "github-actions[bot]"]);
+    await git(fixture.path, [
+      "config",
+      "user.email",
+      "41898282+github-actions[bot]@users.noreply.github.com",
+    ]);
     for (const tag of ["a@0.2.0", "b@0.2.0"]) {
       await git(fixture.path, ["tag", tag]);
     }
