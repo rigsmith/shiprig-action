@@ -1,11 +1,14 @@
 import { Buffer } from "node:buffer";
 import fs from "node:fs/promises";
 import path from "node:path";
+import * as core from "@actions/core";
 import { exec } from "tinyexec";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GitHub } from "./github.ts";
+import { forgeRelease } from "./shiprig.ts";
 import {
   createGitHttpRemote,
+  createGitHttpRemotes,
   describeGitHttpRequests,
   shallowClone,
   testdir,
@@ -22,6 +25,10 @@ const githubContext = vi.hoisted(() => ({
 vi.mock("@actions/github", () => ({
   context: githubContext,
   getOctokit: () => ({}),
+}));
+vi.mock("@actions/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@actions/core")>()),
+  setSecret: vi.fn(),
 }));
 
 async function git(cwd: string, args: string[]) {
@@ -57,12 +64,19 @@ async function isolateGitConfig() {
 }
 
 type GitHttpRemote = Awaited<ReturnType<typeof createGitHttpRemote>>;
+// A remote whether it has a server of its own or shares one.
+type Remote = Pick<GitHttpRemote, "path" | "url" | "requests">;
+
+// Two repos on one server, as two repos on github.com share its origin.
+function createSameServerRemotes() {
+  return createGitHttpRemotes(2, { "file.txt": "initial\n" });
+}
 
 async function pushChangedFile(
   repository: string,
   serverUrl: string,
   token: string,
-  remotes: GitHttpRemote[],
+  remotes: Remote[],
 ) {
   await fs.writeFile(path.join(repository, "file.txt"), "changed\n");
   const github = new GitHub({
@@ -85,13 +99,13 @@ async function pushChangedFile(
   return github;
 }
 
-async function expectReleaseBranch(remote: GitHttpRemote, repository: string) {
+async function expectReleaseBranch(remote: Remote, repository: string) {
   expect(
     await git(remote.path, ["rev-parse", "refs/heads/changeset-release/main"]),
   ).toBe(await git(repository, ["rev-parse", "HEAD"]));
 }
 
-function expectRequestsToUseToken(remote: GitHttpRemote, token: string) {
+function expectRequestsToUseToken(remote: Remote, token: string) {
   expect(remote.requests.length).toBeGreaterThan(0);
   for (const request of remote.requests) {
     expect(request.headers.authorization).toEqual([getAuthorization(token)]);
@@ -179,8 +193,8 @@ describe("GitHub", () => {
   it("uses the push URL when it differs from the fetch URL", async () => {
     await using _gitConfig = await isolateGitConfig();
     const actionToken = "action-token";
-    await using fetchRemote = await createRemote();
-    await using pushRemote = await createRemote();
+    await using server = await createSameServerRemotes();
+    const [fetchRemote, pushRemote] = server.remotes;
     await using repositoryFixture = await shallowClone(fetchRemote.path);
     const repository = repositoryFixture.path;
 
@@ -202,8 +216,8 @@ describe("GitHub", () => {
   it("uses github-token for every push URL", async () => {
     await using _gitConfig = await isolateGitConfig();
     const actionToken = "action-token";
-    await using firstRemote = await createRemote();
-    await using secondRemote = await createRemote();
+    await using server = await createSameServerRemotes();
+    const [firstRemote, secondRemote] = server.remotes;
     await using repositoryFixture = await shallowClone(firstRemote.path);
     const repository = repositoryFixture.path;
 
@@ -232,8 +246,8 @@ describe("GitHub", () => {
   it("preserves existing command-scoped Git config entries", async () => {
     await using _gitConfig = await isolateGitConfig();
     const actionToken = "action-token";
-    await using fetchRemote = await createRemote();
-    await using pushRemote = await createRemote();
+    await using server = await createSameServerRemotes();
+    const [fetchRemote, pushRemote] = server.remotes;
     await using repositoryFixture = await shallowClone(fetchRemote.path);
     const repository = repositoryFixture.path;
 
@@ -252,6 +266,25 @@ describe("GitHub", () => {
     expect(fetchRemote.requests).toEqual([]);
     await expectReleaseBranch(pushRemote, repository);
     expectRequestsToUseToken(pushRemote, actionToken);
+  }, 15_000);
+
+  it("never sends github-token to an origin that isn't on the GitHub server", async () => {
+    await using _gitConfig = await isolateGitConfig();
+    // A mirror or self-hosted forge: reachable without credentials.
+    await using mirror = await createRemote();
+    await using repositoryFixture = await shallowClone(mirror.path);
+    const repository = repositoryFixture.path;
+    await git(repository, ["remote", "set-url", "origin", mirror.url]);
+
+    await pushChangedFile(repository, "https://github.com", "action-token", [
+      mirror,
+    ]);
+
+    await expectReleaseBranch(mirror, repository);
+    expect(mirror.requests.length).toBeGreaterThan(0);
+    for (const request of mirror.requests) {
+      expect(request.headers.authorization).toBeUndefined();
+    }
   }, 15_000);
 });
 
@@ -400,4 +433,204 @@ describe("baseMovedPast", () => {
       "Not Found",
     );
   });
+});
+
+// `shiprig forge-release` in combined mode creates the combined tag and pushes
+// it with plain `git push origin`, the step that failed in a checkout made
+// with `persist-credentials: false`. These run the real shiprig (the pinned
+// devDependency), through forgeRelease's own exec, against a local HTTP remote
+// that, like GitHub, refuses a request without the token. Only the release
+// half is stubbed: `gh` on PATH is a script, so nothing reaches the network.
+describe("forge-release's tag push", () => {
+  const token = "action-token";
+
+  // Two packages released together at 0.2.0, one GitHub release for both.
+  // The forge is named because origin's host (127.0.0.1) isn't GitHub's.
+  const workspace = {
+    ".changeset/config.json": JSON.stringify({
+      fixed: [["a", "b"]],
+      release: { steps: { release: { forge: "github" } } },
+      forgeRelease: {
+        mode: "combined",
+        name: "Acme ${version}",
+        tag: "v${version}",
+      },
+    }),
+    "package.json": JSON.stringify({
+      name: "root",
+      private: true,
+      workspaces: ["packages/*"],
+    }),
+    "package-lock.json": "",
+    "packages/a/package.json": JSON.stringify({ name: "a", version: "0.2.0" }),
+    "packages/a/CHANGELOG.md":
+      "# a\n\n## 0.2.0\n\n### Patch Changes\n\n- fix a\n",
+    "packages/b/package.json": JSON.stringify({ name: "b", version: "0.2.0" }),
+    "packages/b/CHANGELOG.md":
+      "# b\n\n## 0.2.0\n\n### Patch Changes\n\n- fix b\n",
+  };
+
+  // `gh` as forge-release drives it: signed in, no release until `release
+  // create` makes one. Each call goes to gh.log.
+  async function stubGh() {
+    const fixture = await testdir({
+      gh: `#!/bin/sh
+dir="$(dirname "$0")"
+echo "$*" >> "$dir/gh.log"
+case "$1 $2" in
+"auth status") exit 0 ;;
+"release view")
+  [ -f "$dir/created" ] || { echo "release not found" >&2; exit 1; }
+  case " $* " in *" --json "*) echo "https://github.com/acme/repo/releases/tag/$3" ;; esac ;;
+"release create") touch "$dir/created" ;;
+*) echo "gh stub: unexpected $*" >&2; exit 1 ;;
+esac
+`,
+    });
+    await fs.chmod(path.join(fixture.path, "gh"), 0o755);
+    vi.stubEnv("PATH", `${fixture.path}${path.delimiter}${process.env.PATH}`);
+    return Object.assign(fixture, {
+      calls: () =>
+        fs.readFile(path.join(fixture.path, "gh.log"), "utf8").catch(() => ""),
+    });
+  }
+
+  // A clone with no credentials of its own, what `persist-credentials: false`
+  // leaves, with the packages tagged at HEAD as the publish leaves them.
+  async function checkout(remote: GitHttpRemote) {
+    const fixture = await shallowClone(remote.path);
+    await git(fixture.path, ["remote", "set-url", "origin", remote.url]);
+    await expect(
+      git(fixture.path, ["config", "--get-regexp", "extraheader"]),
+    ).rejects.toThrow();
+    // shiprig's combined tag is annotated, so it needs a tagger: the identity
+    // the action's ensureGitUser gives a real run. useConfigOnly stops git
+    // falling back to the machine's user and hostname, as macOS does and a
+    // CI runner doesn't, so a missing identity fails here too.
+    await git(fixture.path, ["config", "user.useConfigOnly", "true"]);
+    await git(fixture.path, ["config", "user.name", "github-actions[bot]"]);
+    await git(fixture.path, [
+      "config",
+      "user.email",
+      "41898282+github-actions[bot]@users.noreply.github.com",
+    ]);
+    for (const tag of ["a@0.2.0", "b@0.2.0"]) {
+      await git(fixture.path, ["tag", tag]);
+    }
+    return fixture;
+  }
+
+  function createAuthRemote() {
+    return createGitHttpRemote(workspace, {
+      authorization: getAuthorization(token),
+    });
+  }
+
+  async function remoteTag(remote: GitHttpRemote) {
+    return git(remote.path, ["tag", "--list", "v0.2.0"]);
+  }
+
+  it("fails without the push env, as in a checkout with no credentials", async () => {
+    await using _gitConfig = await isolateGitConfig();
+    await using gh = await stubGh();
+    await using remote = await createAuthRemote();
+    await using repository = await checkout(remote);
+
+    await expect(forgeRelease(repository.path, { token })).rejects.toThrow(
+      "tag v0.2.0",
+    );
+    expect(await remoteTag(remote)).toBe("");
+    expect(remote.requests.map((r) => r.status)).toContain(401);
+    expect(await gh.calls()).not.toContain("release create");
+  }, 15_000);
+
+  it("reaches the remote with github-token through gitPushEnv, leaving .git/config alone", async () => {
+    await using _gitConfig = await isolateGitConfig();
+    await using gh = await stubGh();
+    await using remote = await createAuthRemote();
+    await using repository = await checkout(remote);
+    const github = new GitHub({
+      cwd: repository.path,
+      githubToken: token,
+      serverUrl: new URL(remote.url).origin,
+    });
+
+    let made;
+    try {
+      made = await forgeRelease(repository.path, {
+        token,
+        gitEnv: await github.gitPushEnv(),
+      });
+    } catch (error) {
+      throw new Error(
+        `forge-release failed; the remote saw:\n${describeGitHttpRequests([remote])}`,
+        { cause: error },
+      );
+    }
+
+    expect(made).toMatchObject({
+      mode: "combined",
+      releases: [
+        {
+          tag: "v0.2.0",
+          name: "Acme 0.2.0",
+          packages: ["a", "b"],
+          action: "created",
+        },
+      ],
+    });
+    // shiprig's combined tag is annotated: compare the commit it tags.
+    expect(await git(remote.path, ["rev-parse", "v0.2.0^{commit}"])).toBe(
+      await git(repository.path, ["rev-parse", "HEAD"]),
+    );
+    expect(await gh.calls()).toMatch(/^release create v0\.2\.0 /m);
+    expectRequestsToUseToken(remote, token);
+    // The header is masked, and only that process had it.
+    expect(core.setSecret).toHaveBeenCalledWith(
+      Buffer.from(`x-access-token:${token}`).toString("base64"),
+    );
+    await expect(
+      git(repository.path, ["config", "--get-regexp", "extraheader"]),
+    ).rejects.toThrow();
+  }, 15_000);
+
+  // The dry run looks the combined tag up on origin too: a private repo
+  // refuses that without credentials, so it gets the same env.
+  it("can't look the tag up in a dry run without the env", async () => {
+    await using _gitConfig = await isolateGitConfig();
+    await using _gh = await stubGh();
+    await using remote = await createAuthRemote();
+    await using repository = await checkout(remote);
+
+    await expect(
+      forgeRelease(repository.path, { token, dryRun: true }),
+    ).rejects.toThrow("looking up tag v0.2.0 on origin");
+    expect(remote.requests.map((r) => r.status)).toContain(401);
+  }, 15_000);
+
+  it("looks the tag up with the env in a dry run, and pushes nothing", async () => {
+    await using _gitConfig = await isolateGitConfig();
+    await using gh = await stubGh();
+    await using remote = await createAuthRemote();
+    await using repository = await checkout(remote);
+    const github = new GitHub({
+      cwd: repository.path,
+      githubToken: token,
+      serverUrl: new URL(remote.url).origin,
+    });
+
+    const made = await forgeRelease(repository.path, {
+      token,
+      dryRun: true,
+      gitEnv: await github.gitPushEnv(),
+    });
+
+    expect(made.releases.map((r) => r.action)).toEqual(["would-create"]);
+    expectRequestsToUseToken(remote, token);
+    expect(
+      remote.requests.filter((r) => r.url.includes("git-receive-pack")),
+    ).toEqual([]);
+    expect(await remoteTag(remote)).toBe("");
+    expect(await gh.calls()).not.toContain("release create");
+  }, 15_000);
 });

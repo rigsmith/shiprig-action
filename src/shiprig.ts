@@ -201,10 +201,18 @@ type ForgeReleaseJson = {
  * package, or one combined). Existing releases come back as `exists`. Its
  * progress goes to the log; a non-zero exit, or JSON it can't read, throws
  * with shiprig's message, carrying the releases it reported before failing.
+ * In combined mode it looks the combined tag up on origin and, on a real run,
+ * pushes it with `git push`, so callers pass `gitEnv` (GitHub.gitPushEnv) to
+ * give git the token in a checkout with no git credentials; only this process
+ * gets it.
  */
 export async function forgeRelease(
   cwd: string,
-  { token, dryRun = false }: { token: string; dryRun?: boolean },
+  {
+    token,
+    dryRun = false,
+    gitEnv = {},
+  }: { token: string; dryRun?: boolean; gitEnv?: Record<string, string> },
 ): Promise<{ mode?: string; releases: ForgeRelease[]; message?: string }> {
   const args = ["forge-release", "--json"];
   if (dryRun) args.push("--dry-run");
@@ -214,7 +222,7 @@ export async function forgeRelease(
     // stdout is only the JSON, so only stderr's progress is shown.
     silent: true,
     listeners: { stderr: (data) => process.stderr.write(data) },
-    env: { ...process.env, GH_TOKEN: token, GITHUB_TOKEN: token },
+    env: { ...process.env, ...gitEnv, GH_TOKEN: token, GITHUB_TOKEN: token },
   });
   let json: ForgeReleaseJson | undefined;
   try {

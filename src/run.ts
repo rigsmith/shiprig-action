@@ -430,13 +430,20 @@ export async function runPublish({
   const releaseTagOf = new Map<string, string>();
   if (useForgeRelease && releases.length > 0) {
     // forge-release releases what is tagged at HEAD, so the tags go to GitHub
-    // first; in combined mode it pushes the combined tag itself.
+    // first; in combined mode it pushes the combined tag itself with `git
+    // push`, which gets the token through its environment: the checkout may
+    // have no git credentials (persist-credentials: false).
     if (pushGitTags) {
       await Promise.all(releases.map(({ tag }) => github.pushTag(tag)));
     }
     let made: ForgeRelease[];
     try {
-      made = (await forgeRelease(cwd, { token: github.getToken() })).releases;
+      made = (
+        await forgeRelease(cwd, {
+          token: github.getToken(),
+          gitEnv: await github.gitPushEnv(),
+        })
+      ).releases;
     } catch (err) {
       if (err instanceof ForgeReleaseError) logForgeReleases(err.releases);
       throw err;
@@ -592,10 +599,14 @@ async function publishDryRun({
   });
   if (useForgeRelease) {
     // It reads the tags at HEAD, which a dry run doesn't create: before the
-    // publish it sees only releases a run already tagged here.
+    // publish it sees only releases a run already tagged here. It looks the
+    // combined tag up on origin (`git ls-remote`), which a private repo
+    // refuses without credentials, so it gets the token too; a dry run
+    // pushes nothing.
     const { releases, message } = await forgeRelease(cwd, {
       token: github.getToken(),
       dryRun: true,
+      gitEnv: await github.gitPushEnv(),
     });
     logForgeReleases(releases);
     if (releases.length === 0) {

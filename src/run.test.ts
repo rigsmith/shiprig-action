@@ -1006,11 +1006,15 @@ describe("polyglot", () => {
     const cwd = fixture.path;
     await updateGithubContext(cwd);
     vi.stubEnv("RUNNER_TEMP", cwd);
+    const real = process.env.SHIPRIG_BIN;
+    // The action's own per-package releases, which it makes with a shiprig
+    // older than 1.27.0; `shiprig forge-release` is covered in github.test.ts.
+    await wrapShiprig(cwd, { version: "1.26.0" });
 
     // `shiprig tag` writes the same CHANGESETS_OUTPUT events `shiprig
     // publish` does, without reaching a registry.
     const result = await runPublish({
-      script: `${process.env.SHIPRIG_BIN} tag`,
+      script: `${real} tag`,
       github: createGithub(cwd),
       createGithubReleases: true,
       pushGitTags: false,
@@ -1223,7 +1227,8 @@ describe("publish credits from the changelog (a release from commits)", () => {
 // forge-release call and its GH_TOKEN to calls.log (`forge-release --help`
 // exits with forge-release-help.exit, else 0), and `config show` with
 // config-show.json when there is one; every other command goes to
-// `delegate`, the real shiprig unless a test says otherwise.
+// `delegate`, the real shiprig unless a test says otherwise. Each call's
+// command and GIT_CONFIG_* environment goes to env.log.
 async function wrapShiprig(
   cwd: string,
   {
@@ -1236,6 +1241,7 @@ async function wrapShiprig(
     bin,
     `#!/bin/sh
 dir="$(dirname "$0")"
+echo "$1 $(env | grep '^GIT_CONFIG_' | sort | tr '\n' ' ')" >> "$dir/env.log"
 case "$1" in
 --version) echo "${version}" ;;
 forge-release)
@@ -1315,6 +1321,45 @@ describe("publish makes the GitHub releases with shiprig forge-release", () => {
   async function calls(cwd: string) {
     return fs.readFile(path.join(cwd, "calls.log"), "utf8").catch(() => "");
   }
+
+  // Each shiprig call the wrapper saw, with its GIT_CONFIG_* environment.
+  async function envLog(cwd: string) {
+    return (await fs.readFile(path.join(cwd, "env.log"), "utf8"))
+      .trim()
+      .split("\n");
+  }
+
+  // The header `git push` sends with the action's token (GitHub.gitPushEnv).
+  const basic = Buffer.from("x-access-token:@@GITHUB_TOKEN").toString("base64");
+
+  it("gives forge-release, and no other shiprig call, the token for its tag push", async () => {
+    await using fixture = await createPolyglotFixture();
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    vi.stubEnv("GIT_CONFIG_COUNT", "0");
+    await forgeReleaseAnswer(cwd, { releases: [pkgA, crateB] });
+    const setSecret = vi.spyOn(core, "setSecret");
+
+    const { run } = await publish(cwd);
+    await run;
+
+    const log = await envLog(cwd);
+    const forge = log.filter((line) => line.startsWith("forge-release "));
+    expect(forge).toHaveLength(1);
+    // Checkout's own header is reset, then the token's is the only one.
+    expect(forge[0]).toContain(
+      "GIT_CONFIG_KEY_0=http.https://github.com/.extraheader GIT_CONFIG_KEY_1=http.https://github.com/.extraheader",
+    );
+    expect(forge[0]).toContain("GIT_CONFIG_VALUE_0= ");
+    expect(forge[0]).toContain(
+      `GIT_CONFIG_VALUE_1=AUTHORIZATION: basic ${basic}`,
+    );
+    const others = log.filter((line) => !line.startsWith("forge-release "));
+    expect(others.length).toBeGreaterThan(0);
+    for (const line of others) expect(line).not.toContain("extraheader");
+    expect(setSecret).toHaveBeenCalledWith(basic);
+  });
 
   it("pushes the tags, then logs each release it reports, keeping the outputs", async () => {
     await using fixture = await createPolyglotFixture();
@@ -1608,6 +1653,18 @@ describe("publish makes the GitHub releases with shiprig forge-release", () => {
       "forge-release --json --dry-run GH_TOKEN=@@GITHUB_TOKEN",
     );
     expect(log).not.toMatch(/^forge-release --json GH/m);
+    // Its lookup of the combined tag on origin needs the token in a private
+    // repo; it pushes nothing (pushTag isn't called, and the real binary's
+    // dry run is held to that in github.test.ts).
+    const shiprigEnv = await envLog(cwd);
+    expect(
+      shiprigEnv.filter((line) => line.startsWith("forge-release ")),
+    ).toEqual([expect.stringContaining(`AUTHORIZATION: basic ${basic}`)]);
+    for (const line of shiprigEnv.filter(
+      (l) => !l.startsWith("forge-release "),
+    )) {
+      expect(line).not.toContain("extraheader");
+    }
     expect(info).toHaveBeenCalledWith(
       "Dry run: `shiprig forge-release` would create the GitHub release pkg@1.0.0 for pkg",
     );

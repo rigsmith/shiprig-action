@@ -67,6 +67,20 @@ function getHttpUrl(remoteUrl: string): string | undefined {
   }
 }
 
+// Whether a push URL is on the GitHub server the token belongs to: same
+// origin, under the server's path. Matching ignores the username.
+function isOnServer(httpUrl: string, serverUrl: string): boolean {
+  try {
+    const url = new URL(httpUrl);
+    const server = new URL(`${serverUrl}/`);
+    return (
+      url.origin === server.origin && url.pathname.startsWith(server.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
+
 export class GitHub {
   readonly #githubToken: string;
   readonly octokit: Octokit;
@@ -96,7 +110,14 @@ export class GitHub {
     return this.#githubToken;
   }
 
-  async #getCliAuthEnv(): Promise<Record<string, string>> {
+  /**
+   * The environment that makes a `git push origin` in this checkout use
+   * `github-token`, for this process only: command-scoped `http.extraHeader`
+   * config through GIT_CONFIG_COUNT/KEY_n/VALUE_n, never written to
+   * .git/config. Works in a checkout with no credentials of its own
+   * (`persist-credentials: false`). The header is masked in the log.
+   */
+  async gitPushEnv(): Promise<Record<string, string>> {
     // Make `github-token` authoritative for CLI pushes without changing the
     // repository config. Git may otherwise use checkout's persisted header or
     // credentials embedded in a remote URL, so we need to install command-scoped
@@ -108,6 +129,8 @@ export class GitHub {
     const basic = Buffer.from(`x-access-token:${this.#githubToken}`).toString(
       "base64",
     );
+    // The runner masks the token, not its base64.
+    core.setSecret(basic);
 
     // The environment may already contain command-scoped Git config. Append
     // our KEY_n/VALUE_n entries so those existing settings stay active.
@@ -135,10 +158,12 @@ export class GitHub {
     // The host key replaces checkout's usual persisted header; an exact key for
     // each destination outranks path- or username-specific inherited config.
     // Git selects only one URL section, so these keys do not duplicate headers.
+    // Only destinations on the GitHub server get a key: the token must never
+    // go to another host origin points at (a mirror, a self-hosted forge).
     const extraHeaderKeys = new Set([`http.${this.serverUrl}/.extraheader`]);
     for (const remoteUrl of stdout.split(/\r?\n/)) {
       const httpUrl = getHttpUrl(remoteUrl);
-      if (httpUrl !== undefined) {
+      if (httpUrl !== undefined && isOnServer(httpUrl, this.serverUrl)) {
         extraHeaderKeys.add(`http.${httpUrl}.extraheader`);
       }
     }
@@ -232,7 +257,7 @@ export class GitHub {
         cwd: this.cwd,
         env: {
           ...process.env,
-          ...(await this.#getCliAuthEnv()),
+          ...(await this.gitPushEnv()),
         } as Record<string, string>,
       });
     }
@@ -328,7 +353,7 @@ export class GitHub {
       cwd: this.cwd,
       env: {
         ...process.env,
-        ...(await this.#getCliAuthEnv()),
+        ...(await this.gitPushEnv()),
       } as Record<string, string>,
     });
   }

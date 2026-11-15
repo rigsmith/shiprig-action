@@ -235,11 +235,25 @@ function recordRequest(request: IncomingMessage): RecordedRequest {
   };
 }
 
-async function createGitHttpServer(cwd: string) {
+// With `authorization`, a request without exactly that Authorization header
+// gets a 401, as GitHub answers a push with no credentials.
+async function createGitHttpServer(
+  cwd: string,
+  { authorization }: { authorization?: string } = {},
+) {
   const requests: RecordedRequest[] = [];
   const server = http.createServer((request, response) => {
     const recordedRequest = recordRequest(request);
     requests.push(recordedRequest);
+    if (
+      authorization !== undefined &&
+      request.headersDistinct.authorization?.join("\n") !== authorization
+    ) {
+      recordedRequest.status = 401;
+      response.writeHead(401, { "WWW-Authenticate": 'Basic realm="git"' });
+      response.end();
+      return;
+    }
 
     void runGitHttpBackend(cwd, request, response, recordedRequest).catch(
       (error: unknown) => {
@@ -302,17 +316,55 @@ async function createLocalRemote(dir: Fixture) {
   return moveDisposable(stack, fixture);
 }
 
-export async function createGitHttpRemote(files: Fixture) {
+export async function createGitHttpRemote(
+  files: Fixture,
+  options: { authorization?: string } = {},
+) {
   await using stack = new AsyncDisposableStack();
   const fixture = stack.use(await createLocalRemote(files));
   const server = stack.use(
-    await createGitHttpServer(path.dirname(fixture.path)),
+    await createGitHttpServer(path.dirname(fixture.path), options),
   );
 
   return moveDisposable(stack, {
     path: fixture.path,
     url: `${server.origin}/${path.basename(fixture.path)}`,
     requests: server.requests,
+  });
+}
+
+// Several remotes behind one server, as one GitHub server hosts many repos:
+// same origin, a path each. Each remote's `requests` are only its own.
+export async function createGitHttpRemotes(
+  count: number,
+  files: Fixture,
+  options: { authorization?: string } = {},
+) {
+  await using stack = new AsyncDisposableStack();
+  const fixtures = [];
+  for (let i = 0; i < count; i++) {
+    fixtures.push(stack.use(await createLocalRemote(files)));
+  }
+  const root = path.dirname(fixtures[0].path);
+  assert(
+    fixtures.every((fixture) => path.dirname(fixture.path) === root),
+    "The remotes must share a parent directory to share a server",
+  );
+  const server = stack.use(await createGitHttpServer(root, options));
+
+  return moveDisposable(stack, {
+    remotes: fixtures.map((fixture) => {
+      const name = path.basename(fixture.path);
+      return {
+        path: fixture.path,
+        url: `${server.origin}/${name}`,
+        get requests() {
+          return server.requests.filter((request) =>
+            request.url.startsWith(`/${name}/`),
+          );
+        },
+      };
+    }),
   });
 }
 
