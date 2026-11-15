@@ -1220,7 +1220,8 @@ describe("publish credits from the changelog (a release from commits)", () => {
 
 // A shiprig that reports `version` and answers `forge-release` with
 // forge-release.json (exiting with forge-release.exit, else 0), logging each
-// forge-release call and its GH_TOKEN to calls.log, and `config show` with
+// forge-release call and its GH_TOKEN to calls.log (`forge-release --help`
+// exits with forge-release-help.exit, else 0), and `config show` with
 // config-show.json when there is one; every other command goes to
 // `delegate`, the real shiprig unless a test says otherwise.
 async function wrapShiprig(
@@ -1238,6 +1239,7 @@ dir="$(dirname "$0")"
 case "$1" in
 --version) echo "${version}" ;;
 forge-release)
+  if [ "$2" = "--help" ]; then exit "$(cat "$dir/forge-release-help.exit" 2>/dev/null || echo 0)"; fi
   echo "$* GH_TOKEN=$GH_TOKEN" >> "$dir/calls.log"
   echo "forge-release: working" >&2
   cat "$dir/forge-release.json"
@@ -1531,6 +1533,42 @@ describe("publish makes the GitHub releases with shiprig forge-release", () => {
     expect(pushTag).not.toHaveBeenCalled();
     expect(mockedGithubMethods.repos.createRelease).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["has", 0, true],
+    ["lacks", 1, false],
+  ])(
+    "asks a source build whether it %s forge-release",
+    async (_, helpExit, used) => {
+      await using fixture = await createPolyglotFixture();
+      const cwd = fixture.path;
+      await updateGithubContext(cwd);
+      vi.stubEnv("RUNNER_TEMP", cwd);
+      await forgeReleaseAnswer(cwd, { releases: [pkgA, crateB] });
+      await fs.writeFile(
+        path.join(cwd, "forge-release-help.exit"),
+        String(helpExit),
+      );
+      const github = createGithub(cwd);
+      vi.spyOn(github, "pushTag").mockResolvedValue();
+      const real = process.env.SHIPRIG_BIN;
+      await wrapShiprig(cwd, { version: "source build (abc1234)" });
+
+      const result = await runPublish({
+        script: `${real} tag`,
+        github,
+        createGithubReleases: true,
+        pushGitTags: true,
+        cwd,
+      });
+
+      expect(result.published).toBe(true);
+      expect((await calls(cwd)).includes("forge-release --json")).toBe(used);
+      expect(mockedGithubMethods.repos.createRelease).toHaveBeenCalledTimes(
+        used ? 0 : 2,
+      );
+    },
+  );
 
   it("previews with forge-release --dry-run in a dry run", async () => {
     await using fixture = await dryRunFixture();

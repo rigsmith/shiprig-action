@@ -22,7 +22,7 @@ import {
   getExecOutputShiprig,
   listPackages,
   FIRST_RELEASE,
-  shiprigAtLeast,
+  hasForgeRelease,
   type ForgeRelease,
   plannedTags,
   readChangelog,
@@ -276,9 +276,7 @@ export async function runPublish({
   // The releases come from `shiprig forge-release` on a shiprig that has it,
   // with release-notes-fallback `error` only: it has no fallback for a missing
   // entry, so `generate` and `skip` keep the action's own per-package releases.
-  const forgeReleaseShiprig =
-    createGithubReleases &&
-    (await shiprigAtLeast(FORGE_RELEASE_SHIPRIG_VERSION));
+  const forgeReleaseShiprig = createGithubReleases && (await hasForgeRelease());
   const useForgeRelease =
     forgeReleaseShiprig && releaseNotesFallback === "error";
   if (forgeReleaseShiprig && !useForgeRelease) {

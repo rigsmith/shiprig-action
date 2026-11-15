@@ -145,17 +145,30 @@ export function shiprigVersion(): Promise<string> {
 }
 
 /**
- * Whether the shiprig here is min or later. A source build counts as new
- * enough, as requireShiprig reads it; one whose version can't be read doesn't.
+ * Whether the shiprig here has `shiprig forge-release`: a release at
+ * FORGE_RELEASE_SHIPRIG_VERSION or later, or a source build (which has no
+ * version to compare) whose `forge-release --help` succeeds. One whose
+ * version can't be read hasn't.
  */
-export async function shiprigAtLeast(min: string): Promise<boolean> {
+export async function hasForgeRelease(): Promise<boolean> {
   let version: string;
   try {
     version = await shiprigVersion();
   } catch {
     return false;
   }
-  return version.startsWith("source build") || atLeast(version, min);
+  if (!version.startsWith("source build")) {
+    return atLeast(version, FORGE_RELEASE_SHIPRIG_VERSION);
+  }
+  try {
+    await execFileAsync(shiprigBin(), ["forge-release", "--help"], {
+      timeout: versionCheck.timeoutMs,
+      encoding: "utf8",
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** For tests: forget the cached check. */
