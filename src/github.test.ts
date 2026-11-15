@@ -8,6 +8,7 @@ import { GitHub } from "./github.ts";
 import { forgeRelease } from "./shiprig.ts";
 import {
   createGitHttpRemote,
+  createGitHttpRemotes,
   describeGitHttpRequests,
   shallowClone,
   testdir,
@@ -63,12 +64,19 @@ async function isolateGitConfig() {
 }
 
 type GitHttpRemote = Awaited<ReturnType<typeof createGitHttpRemote>>;
+// A remote whether it has a server of its own or shares one.
+type Remote = Pick<GitHttpRemote, "path" | "url" | "requests">;
+
+// Two repos on one server, as two repos on github.com share its origin.
+function createSameServerRemotes() {
+  return createGitHttpRemotes(2, { "file.txt": "initial\n" });
+}
 
 async function pushChangedFile(
   repository: string,
   serverUrl: string,
   token: string,
-  remotes: GitHttpRemote[],
+  remotes: Remote[],
 ) {
   await fs.writeFile(path.join(repository, "file.txt"), "changed\n");
   const github = new GitHub({
@@ -91,13 +99,13 @@ async function pushChangedFile(
   return github;
 }
 
-async function expectReleaseBranch(remote: GitHttpRemote, repository: string) {
+async function expectReleaseBranch(remote: Remote, repository: string) {
   expect(
     await git(remote.path, ["rev-parse", "refs/heads/changeset-release/main"]),
   ).toBe(await git(repository, ["rev-parse", "HEAD"]));
 }
 
-function expectRequestsToUseToken(remote: GitHttpRemote, token: string) {
+function expectRequestsToUseToken(remote: Remote, token: string) {
   expect(remote.requests.length).toBeGreaterThan(0);
   for (const request of remote.requests) {
     expect(request.headers.authorization).toEqual([getAuthorization(token)]);
@@ -185,8 +193,8 @@ describe("GitHub", () => {
   it("uses the push URL when it differs from the fetch URL", async () => {
     await using _gitConfig = await isolateGitConfig();
     const actionToken = "action-token";
-    await using fetchRemote = await createRemote();
-    await using pushRemote = await createRemote();
+    await using server = await createSameServerRemotes();
+    const [fetchRemote, pushRemote] = server.remotes;
     await using repositoryFixture = await shallowClone(fetchRemote.path);
     const repository = repositoryFixture.path;
 
@@ -208,8 +216,8 @@ describe("GitHub", () => {
   it("uses github-token for every push URL", async () => {
     await using _gitConfig = await isolateGitConfig();
     const actionToken = "action-token";
-    await using firstRemote = await createRemote();
-    await using secondRemote = await createRemote();
+    await using server = await createSameServerRemotes();
+    const [firstRemote, secondRemote] = server.remotes;
     await using repositoryFixture = await shallowClone(firstRemote.path);
     const repository = repositoryFixture.path;
 
@@ -238,8 +246,8 @@ describe("GitHub", () => {
   it("preserves existing command-scoped Git config entries", async () => {
     await using _gitConfig = await isolateGitConfig();
     const actionToken = "action-token";
-    await using fetchRemote = await createRemote();
-    await using pushRemote = await createRemote();
+    await using server = await createSameServerRemotes();
+    const [fetchRemote, pushRemote] = server.remotes;
     await using repositoryFixture = await shallowClone(fetchRemote.path);
     const repository = repositoryFixture.path;
 
@@ -258,6 +266,25 @@ describe("GitHub", () => {
     expect(fetchRemote.requests).toEqual([]);
     await expectReleaseBranch(pushRemote, repository);
     expectRequestsToUseToken(pushRemote, actionToken);
+  }, 15_000);
+
+  it("never sends github-token to an origin that isn't on the GitHub server", async () => {
+    await using _gitConfig = await isolateGitConfig();
+    // A mirror or self-hosted forge: reachable without credentials.
+    await using mirror = await createRemote();
+    await using repositoryFixture = await shallowClone(mirror.path);
+    const repository = repositoryFixture.path;
+    await git(repository, ["remote", "set-url", "origin", mirror.url]);
+
+    await pushChangedFile(repository, "https://github.com", "action-token", [
+      mirror,
+    ]);
+
+    await expectReleaseBranch(mirror, repository);
+    expect(mirror.requests.length).toBeGreaterThan(0);
+    for (const request of mirror.requests) {
+      expect(request.headers.authorization).toBeUndefined();
+    }
   }, 15_000);
 });
 

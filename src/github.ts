@@ -67,6 +67,20 @@ function getHttpUrl(remoteUrl: string): string | undefined {
   }
 }
 
+// Whether a push URL is on the GitHub server the token belongs to: same
+// origin, under the server's path. Matching ignores the username.
+function isOnServer(httpUrl: string, serverUrl: string): boolean {
+  try {
+    const url = new URL(httpUrl);
+    const server = new URL(`${serverUrl}/`);
+    return (
+      url.origin === server.origin && url.pathname.startsWith(server.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
+
 export class GitHub {
   readonly #githubToken: string;
   readonly octokit: Octokit;
@@ -144,10 +158,12 @@ export class GitHub {
     // The host key replaces checkout's usual persisted header; an exact key for
     // each destination outranks path- or username-specific inherited config.
     // Git selects only one URL section, so these keys do not duplicate headers.
+    // Only destinations on the GitHub server get a key: the token must never
+    // go to another host origin points at (a mirror, a self-hosted forge).
     const extraHeaderKeys = new Set([`http.${this.serverUrl}/.extraheader`]);
     for (const remoteUrl of stdout.split(/\r?\n/)) {
       const httpUrl = getHttpUrl(remoteUrl);
-      if (httpUrl !== undefined) {
+      if (httpUrl !== undefined && isOnServer(httpUrl, this.serverUrl)) {
         extraHeaderKeys.add(`http.${httpUrl}.extraheader`);
       }
     }
