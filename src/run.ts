@@ -599,10 +599,14 @@ async function publishDryRun({
   });
   if (useForgeRelease) {
     // It reads the tags at HEAD, which a dry run doesn't create: before the
-    // publish it sees only releases a run already tagged here.
+    // publish it sees only releases a run already tagged here. It looks the
+    // combined tag up on origin (`git ls-remote`), which a private repo
+    // refuses without credentials, so it gets the token too; a dry run
+    // pushes nothing.
     const { releases, message } = await forgeRelease(cwd, {
       token: github.getToken(),
       dryRun: true,
+      gitEnv: await github.gitPushEnv(),
     });
     logForgeReleases(releases);
     if (releases.length === 0) {

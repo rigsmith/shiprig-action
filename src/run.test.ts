@@ -1006,11 +1006,15 @@ describe("polyglot", () => {
     const cwd = fixture.path;
     await updateGithubContext(cwd);
     vi.stubEnv("RUNNER_TEMP", cwd);
+    const real = process.env.SHIPRIG_BIN;
+    // The action's own per-package releases, which it makes with a shiprig
+    // older than 1.27.0; `shiprig forge-release` is covered in github.test.ts.
+    await wrapShiprig(cwd, { version: "1.26.0" });
 
     // `shiprig tag` writes the same CHANGESETS_OUTPUT events `shiprig
     // publish` does, without reaching a registry.
     const result = await runPublish({
-      script: `${process.env.SHIPRIG_BIN} tag`,
+      script: `${real} tag`,
       github: createGithub(cwd),
       createGithubReleases: true,
       pushGitTags: false,
@@ -1649,8 +1653,16 @@ describe("publish makes the GitHub releases with shiprig forge-release", () => {
       "forge-release --json --dry-run GH_TOKEN=@@GITHUB_TOKEN",
     );
     expect(log).not.toMatch(/^forge-release --json GH/m);
-    // A dry run pushes nothing, so it gets no push credentials.
-    for (const line of await envLog(cwd)) {
+    // Its lookup of the combined tag on origin needs the token in a private
+    // repo; it pushes nothing (pushTag isn't called, and the real binary's
+    // dry run is held to that in github.test.ts).
+    const shiprigEnv = await envLog(cwd);
+    expect(
+      shiprigEnv.filter((line) => line.startsWith("forge-release ")),
+    ).toEqual([expect.stringContaining(`AUTHORIZATION: basic ${basic}`)]);
+    for (const line of shiprigEnv.filter(
+      (l) => !l.startsWith("forge-release "),
+    )) {
       expect(line).not.toContain("extraheader");
     }
     expect(info).toHaveBeenCalledWith(

@@ -125,7 +125,9 @@ In combined mode shiprig creates and pushes the `v${version}` tag itself with
 action gives that one `forge-release` process its `github-token` for the push
 (as an `http.extraheader` in git's environment, masked in the log and never
 written to `.git/config`), so a checkout with `persist-credentials: false`
-keeps working. A dry run gets no push credentials. A release that already exists is left as it is, so a re-run
+keeps working. A dry run gets the token too, because shiprig looks the
+combined tag up on `origin`, which a private repository refuses without
+credentials; a dry run pushes nothing. A release that already exists is left as it is, so a re-run
 is safe. If `forge-release` fails, the run fails with shiprig's message, after
 logging any release it made first. `dry-run: true` runs
 `shiprig forge-release --dry-run --json` and logs what it would create; it reads

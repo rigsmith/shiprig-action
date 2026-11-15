@@ -201,9 +201,10 @@ type ForgeReleaseJson = {
  * package, or one combined). Existing releases come back as `exists`. Its
  * progress goes to the log; a non-zero exit, or JSON it can't read, throws
  * with shiprig's message, carrying the releases it reported before failing.
- * In combined mode it pushes the combined tag itself with `git push`, so a
- * real run passes `gitEnv` (GitHub.gitPushEnv) to give that push the token
- * in a checkout with no git credentials; only this process gets it.
+ * In combined mode it looks the combined tag up on origin and, on a real run,
+ * pushes it with `git push`, so callers pass `gitEnv` (GitHub.gitPushEnv) to
+ * give git the token in a checkout with no git credentials; only this process
+ * gets it.
  */
 export async function forgeRelease(
   cwd: string,
