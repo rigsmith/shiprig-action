@@ -47,59 +47,86 @@ const MAX_CHARACTERS_PER_MESSAGE = 60000;
  */
 export type ReleaseNotesFallback = "error" | "generate" | "skip";
 
+/**
+ * The GitHub release of one tag, for the packages it covers: one, or several
+ * sharing it (`"tagTemplate": "v${version}"`). A shared tag's notes are a
+ * `## <name>@<version>` section per package, by name, as shiprig's combined
+ * release writes them. Returns the packages the release covers: none when no
+ * release was created.
+ */
 const createRelease = async (
   octokit: Octokit,
   {
-    pkg,
+    pkgs,
     tagName,
     releaseNotesFallback,
   }: {
-    pkg: ShiprigPackage;
+    pkgs: ShiprigPackage[];
     tagName: string;
     releaseNotesFallback: ReleaseNotesFallback;
   },
-): Promise<boolean> => {
-  const changelog = await readChangelog(pkg);
-  if (changelog === undefined) {
-    // if we can't find a changelog, the user has probably disabled changelogs
-    return false;
-  }
-  const changelogEntry = getChangelogEntry(changelog, pkg.version);
-  const release = {
-    name: tagName,
-    tag_name: tagName,
-    prerelease: pkg.version.includes("-"),
-    ...context.repo,
-  };
-  if (!changelogEntry.found) {
+): Promise<ShiprigPackage[]> => {
+  const shared = pkgs.length > 1;
+  const sections: { pkg: ShiprigPackage; notes?: string }[] = [];
+  let generate = false;
+  for (const pkg of [...pkgs].sort((a, b) =>
+    a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+  )) {
+    const changelog = await readChangelog(pkg);
+    if (changelog === undefined) {
+      // if we can't find a changelog, the user has probably disabled changelogs
+      continue;
+    }
+    const changelogEntry = getChangelogEntry(changelog, pkg.version);
+    if (changelogEntry.found) {
+      sections.push({ pkg, notes: changelogEntry.content });
+      continue;
+    }
     // Without its heading, the entry's content is the whole changelog, which
     // is no release's notes.
     if (releaseNotesFallback === "skip") {
       core.warning(
-        `No changelog entry for ${pkg.name}@${pkg.version}; not creating the ${tagName} release (release-notes-fallback: skip).`,
+        `No changelog entry for ${pkg.name}@${pkg.version}; ${
+          shared
+            ? `leaving it out of the ${tagName} release`
+            : `not creating the ${tagName} release`
+        } (release-notes-fallback: skip).`,
       );
-      return false;
+      continue;
     }
     if (releaseNotesFallback === "generate") {
       core.warning(
         `No changelog entry for ${pkg.name}@${pkg.version}; the ${tagName} release gets notes GitHub generates (release-notes-fallback: generate).`,
       );
-      await octokit.rest.repos.createRelease({
-        ...release,
-        generate_release_notes: true,
-      });
-      return true;
+      generate = true;
+      sections.push({ pkg });
+      continue;
     }
     throw new Error(
       `Could not find changelog entry for ${pkg.name}@${pkg.version}`,
     );
   }
+  if (sections.length === 0) return [];
 
+  const body = shared
+    ? sections
+        .map(({ pkg, notes }) =>
+          [`## ${pkg.name}@${pkg.version}`, notes?.trim()]
+            .filter(Boolean)
+            .join("\n\n"),
+        )
+        .join("\n\n")
+    : sections[0].notes;
   await octokit.rest.repos.createRelease({
-    ...release,
-    body: changelogEntry.content,
+    name: tagName,
+    tag_name: tagName,
+    prerelease: sections.some(({ pkg }) => pkg.version.includes("-")),
+    ...context.repo,
+    // With a body too, GitHub puts its generated notes after it.
+    ...(generate ? { generate_release_notes: true } : {}),
+    ...(body !== undefined ? { body } : {}),
   });
-  return true;
+  return sections.map(({ pkg }) => pkg);
 };
 
 /**
@@ -277,12 +304,12 @@ export async function runPublish({
 
   // The releases come from `shiprig forge-release` on a shiprig that has it,
   // with release-notes-fallback `error` only: it has no fallback for a missing
-  // entry, so `generate` and `skip` keep the action's own per-package releases.
+  // entry, so `generate` and `skip` keep the action's own per-tag releases.
   const forgeReleaseShiprig = createGithubReleases && (await hasForgeRelease());
   const useForgeRelease =
     forgeReleaseShiprig && releaseNotesFallback === "error";
   if (forgeReleaseShiprig && !useForgeRelease) {
-    // Per-package releases can't stand in for a combined one: stop while
+    // The action's per-tag releases can't stand in for a combined one: stop while
     // nothing has gone out.
     const config = await readShiprigConfig(cwd);
     if (config === undefined) {
@@ -298,12 +325,12 @@ export async function runPublish({
       configured.mode === "combined"
     ) {
       throw new Error(
-        `\`"forgeRelease": { "mode": "combined" }\` in .changeset/config.json needs release-notes-fallback: error (the default); with release-notes-fallback: ${releaseNotesFallback} the action creates one GitHub release per package itself. Nothing was published. ` +
+        `\`"forgeRelease": { "mode": "combined" }\` in .changeset/config.json needs release-notes-fallback: error (the default); with release-notes-fallback: ${releaseNotesFallback} the action creates one GitHub release per tag itself. Nothing was published. ` +
           "Set release-notes-fallback to `error`, or remove the combined mode.",
       );
     }
     core.info(
-      `release-notes-fallback: ${releaseNotesFallback}: the action creates one GitHub release per package itself; \`shiprig forge-release\` is used only with release-notes-fallback: error (the default).`,
+      `release-notes-fallback: ${releaseNotesFallback}: the action creates one GitHub release per tag itself; \`shiprig forge-release\` is used only with release-notes-fallback: error (the default).`,
     );
   }
 
@@ -426,6 +453,16 @@ export async function runPublish({
     }
     return { pkg, tag: event.tag };
   });
+  // The packages behind each tag. A tag several packages share (`"tagTemplate":
+  // "v${version}"`) comes as one event per package from a shiprig that reports
+  // them all, as one naming its first package from an older one; either way
+  // it's one tag to push and one release to create.
+  const packagesByTag = new Map<string, ShiprigPackage[]>();
+  for (const { pkg, tag } of releases) {
+    const pkgs = packagesByTag.get(tag);
+    if (pkgs === undefined) packagesByTag.set(tag, [pkg]);
+    else if (!pkgs.includes(pkg)) pkgs.push(pkg);
+  }
 
   // Each package's GitHub release tag, for those this run released: its own
   // tag, or in combined mode the one release's tag.
@@ -436,7 +473,9 @@ export async function runPublish({
     // push`, which gets the token through its environment: the checkout may
     // have no git credentials (persist-credentials: false).
     if (pushGitTags) {
-      await Promise.all(releases.map(({ tag }) => github.pushTag(tag)));
+      await Promise.all(
+        [...packagesByTag.keys()].map((tag) => github.pushTag(tag)),
+      );
     }
     let made: ForgeRelease[];
     try {
@@ -464,24 +503,21 @@ export async function runPublish({
       releases.length > 0
     ) {
       core.warning(
-        `shiprig ${FORGE_RELEASE_SHIPRIG_VERSION} or later makes the GitHub releases with \`shiprig forge-release\`, following \`forgeRelease\` in .changeset/config.json; this shiprig is older, so the action creates one release per package itself. Upgrade shiprig: https://rigsmith.dev/guide/install`,
+        `shiprig ${FORGE_RELEASE_SHIPRIG_VERSION} or later makes the GitHub releases with \`shiprig forge-release\`, following \`forgeRelease\` in .changeset/config.json; this shiprig is older, so the action creates one release per tag itself. Upgrade shiprig: https://rigsmith.dev/guide/install`,
       );
     }
     await Promise.all(
-      releases.map(async ({ pkg, tag }) => {
+      [...packagesByTag].map(async ([tag, pkgs]) => {
         if (pushGitTags) {
           await github.pushTag(tag);
         }
         if (createGithubReleases) {
-          if (
-            await createRelease(octokit, {
-              pkg,
-              tagName: tag,
-              releaseNotesFallback,
-            })
-          ) {
-            releaseTagOf.set(pkg.name, tag);
-          }
+          const covered = await createRelease(octokit, {
+            pkgs,
+            tagName: tag,
+            releaseNotesFallback,
+          });
+          for (const pkg of covered) releaseTagOf.set(pkg.name, tag);
         }
       }),
     );

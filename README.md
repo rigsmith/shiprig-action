@@ -133,10 +133,12 @@ logging any release it made first. `dry-run: true` runs
 `shiprig forge-release --dry-run --json` and logs what it would create; it reads
 the tags at the release commit, which a dry run doesn't create, so before a real
 publish it usually has nothing to show yet. With a shiprig older than 1.27.0 the
-action falls back to creating one release per package itself, ignoring
+action falls back to creating one release per tag itself, ignoring
 `forgeRelease`, and warns you to upgrade. All of this is with
 `release-notes-fallback: error`, the default; `generate` and `skip` keep the
-action's own per-package releases (see below).
+action's own releases (see below). A tag several packages share
+(`"tagTemplate": "v${version}"`) is pushed once and, in the action's own
+releases, gets one release with a `## <name>@<version>` section per package.
 
 **Missing changelog entries.** Each GitHub release takes its notes from the
 package's `CHANGELOG.md` entry for the version. Before running `publish-script`,
@@ -150,10 +152,12 @@ run fails there too.
 notes GitHub generates from the merged pull requests, and `skip` creates none.
 Either one warns instead of failing. `shiprig forge-release` is used only with
 `error` (the default): with `generate` or `skip` the action keeps creating one
-release per package itself, as above, whatever the shiprig version, and says so
+release per tag itself, as above, whatever the shiprig version, and says so
 in the log. Combined releases need `error`, so `forgeRelease.mode: "combined"`
 with `generate` or `skip` fails before publishing. A package that gets no GitHub
-release isn't named in the "released in" comments.
+release isn't named in the "released in" comments. For a tag several packages
+share, `skip` leaves a package with no entry out of that tag's one release and
+out of its comments; the tag's other packages keep both.
 
 **"Released in" comments.** Once a release's tags are pushed, each pull request
 whose changeset shipped gets one comment naming the package versions it went
