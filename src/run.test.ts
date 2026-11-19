@@ -1544,7 +1544,7 @@ describe("publish makes the GitHub releases with shiprig forge-release", () => {
           : ["crate-b@0.3.0"],
       );
       expect(info).toHaveBeenCalledWith(
-        `release-notes-fallback: ${releaseNotesFallback}: the action creates one GitHub release per package itself; \`shiprig forge-release\` is used only with release-notes-fallback: error (the default).`,
+        `release-notes-fallback: ${releaseNotesFallback}: the action creates one GitHub release per tag itself; \`shiprig forge-release\` is used only with release-notes-fallback: error (the default).`,
       );
       expect(core.warning).not.toHaveBeenCalledWith(
         expect.stringContaining("Upgrade shiprig"),
@@ -1676,6 +1676,324 @@ describe("publish makes the GitHub releases with shiprig forge-release", () => {
     expect(pushTag).not.toHaveBeenCalled();
     expect(mockedGithubMethods.repos.createRelease).not.toHaveBeenCalled();
   });
+});
+
+describe("publish a tag several packages share", () => {
+  // Four packages in lockstep at 1.0.0 under one `v1.0.0` tag, and pkg-e at
+  // 2.0.0, alone on `v2.0.0`; each credits #31. `shiprig tag --dry-run`
+  // prints v1.0.0 once, which the changelog check maps to all four.
+  const names = ["pkg-a", "pkg-b", "pkg-c", "pkg-d"];
+  const versions: Record<string, string> = {
+    ...Object.fromEntries(names.map((name) => [name, "1.0.0"])),
+    "pkg-e": "2.0.0",
+  };
+  const entry = (name: string) =>
+    `### Patch Changes\n\n- [#31](https://github.com/changesets/action/pull/31) ${name} in lockstep`;
+  function lockstepFixture() {
+    return gitdir({
+      ".changeset/config.json": JSON.stringify({ tagTemplate: "v${version}" }),
+      "package.json": JSON.stringify({
+        name: "lockstep",
+        private: true,
+        workspaces: ["packages/*"],
+      }),
+      "package-lock.json": "",
+      // Appends the events in events.json to CHANGESETS_OUTPUT, as `shiprig
+      // publish` would: whatever shiprig the test runs, the events are these.
+      "emit-tags.mjs": `import fs from "node:fs";
+for (const [tag, packageName] of JSON.parse(fs.readFileSync("events.json", "utf8"))) {
+  fs.appendFileSync(process.env.CHANGESETS_OUTPUT, JSON.stringify({ type: "git-tag", tag, packageName }) + "\\n");
+}
+`,
+      ...Object.fromEntries(
+        Object.entries(versions).flatMap(([name, version]) => [
+          [`packages/${name}/package.json`, JSON.stringify({ name, version })],
+          [
+            `packages/${name}/CHANGELOG.md`,
+            `# ${name}\n\n## ${version}\n\n${entry(name)}\n`,
+          ],
+        ]),
+      ),
+    });
+  }
+
+  // Runs a publish whose script reports `events` ([tag, packageName] each),
+  // with forge-release (shiprig 1.27.0) or without it (1.26.0: the action's
+  // own releases). Each pushTag is recorded, and a tag pushed twice fails as
+  // GitHub would.
+  async function publish(
+    cwd: string,
+    events: [string, string][],
+    {
+      forgeRelease = false,
+      ...options
+    }: Partial<Parameters<typeof runPublish>[0]> & {
+      forgeRelease?: boolean;
+    } = {},
+  ) {
+    await fs.writeFile(path.join(cwd, "events.json"), JSON.stringify(events));
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+    const github = createGithub(cwd);
+    const pushed = new Set<string>();
+    const pushTag = vi
+      .spyOn(github, "pushTag")
+      .mockImplementation(async (tag) => {
+        if (pushed.has(tag))
+          throw new Error(`${tag}: Reference already exists`);
+        pushed.add(tag);
+      });
+    await wrapShiprig(cwd, { version: forgeRelease ? "1.27.0" : "1.26.0" });
+    const result = await runPublish({
+      script: "node emit-tags.mjs",
+      github,
+      createGithubReleases: true,
+      pushGitTags: true,
+      commentReleasedPrs: true,
+      cwd,
+      ...options,
+    });
+    return {
+      result,
+      pushed: pushTag.mock.calls.map(([tag]) => tag).sort(),
+      releases: mockedGithubMethods.repos.createRelease.mock.calls.map(
+        ([arg]) => arg,
+      ),
+      comments: mockedGithubMethods.issues.createComment.mock.calls.map(
+        ([arg]) => arg as { issue_number: number; body: string },
+      ),
+    };
+  }
+
+  const sharedEvents = names.map((name): [string, string] => ["v1.0.0", name]);
+
+  // The released in comment on #31, which every package credits.
+  function expectCommentNaming(
+    comments: { issue_number: number; body: string }[],
+    released: [string, string][],
+  ) {
+    expect(comments.map((c) => c.issue_number)).toEqual([31]);
+    for (const [name, tag] of released) {
+      expect(comments[0].body).toContain(
+        `[\`${name}@${versions[name]}\`](https://github.com/changesets/action/releases/tag/${tag})`,
+      );
+    }
+  }
+
+  it("pushes a tag four packages share once, with forge-release, and releases all four", async () => {
+    await using fixture = await lockstepFixture();
+    const cwd = fixture.path;
+    await forgeReleaseAnswer(cwd, {
+      releases: [
+        {
+          tag: "v1.0.0",
+          name: "v1.0.0",
+          packages: names,
+          action: "created",
+          url: "https://github.com/changesets/action/releases/tag/v1.0.0",
+          latest: true,
+          prerelease: false,
+        },
+      ],
+    });
+
+    const { result, pushed, releases, comments } = await publish(
+      cwd,
+      sharedEvents,
+      { forgeRelease: true },
+    );
+
+    expect(pushed).toEqual(["v1.0.0"]);
+    expect(releases).toEqual([]);
+    expect(result).toEqual({
+      published: true,
+      publishedPackages: names.map((name) => ({ name, version: "1.0.0" })),
+      released: names.map((name) => ({
+        name,
+        version: "1.0.0",
+        tag: "v1.0.0",
+      })),
+      exitCode: 0,
+    });
+    expectCommentNaming(
+      comments,
+      names.map((name) => [name, "v1.0.0"]),
+    );
+  });
+
+  it("creates one release for a tag four packages share, with a section for each", async () => {
+    await using fixture = await lockstepFixture();
+    const cwd = fixture.path;
+
+    // Reported out of order: the notes go by name.
+    const { result, pushed, releases, comments } = await publish(
+      cwd,
+      [...sharedEvents].reverse(),
+    );
+
+    expect(pushed).toEqual(["v1.0.0"]);
+    expect(releases).toHaveLength(1);
+    expect(releases[0]).toMatchInlineSnapshot(`
+      {
+        "body": "## pkg-a@1.0.0
+
+      ### Patch Changes
+
+      - [#31](https://github.com/changesets/action/pull/31) pkg-a in lockstep
+
+      ## pkg-b@1.0.0
+
+      ### Patch Changes
+
+      - [#31](https://github.com/changesets/action/pull/31) pkg-b in lockstep
+
+      ## pkg-c@1.0.0
+
+      ### Patch Changes
+
+      - [#31](https://github.com/changesets/action/pull/31) pkg-c in lockstep
+
+      ## pkg-d@1.0.0
+
+      ### Patch Changes
+
+      - [#31](https://github.com/changesets/action/pull/31) pkg-d in lockstep",
+        "name": "v1.0.0",
+        "owner": "changesets",
+        "prerelease": false,
+        "repo": "action",
+        "tag_name": "v1.0.0",
+      }
+    `);
+    expect(result).toMatchObject({
+      published: true,
+      publishedPackages: expect.arrayContaining(
+        names.map((name) => ({ name, version: "1.0.0" })),
+      ),
+      released: expect.arrayContaining(
+        names.map((name) => ({ name, version: "1.0.0", tag: "v1.0.0" })),
+      ),
+    });
+    expect(
+      (result as { publishedPackages: unknown[] }).publishedPackages,
+    ).toHaveLength(4);
+    expectCommentNaming(
+      comments,
+      names.map((name) => [name, "v1.0.0"]),
+    );
+  });
+
+  it("pushes and releases each tag once when shared and per-package tags mix", async () => {
+    await using fixture = await lockstepFixture();
+    const cwd = fixture.path;
+
+    const { result, pushed, releases, comments } = await publish(cwd, [
+      ["v1.0.0", "pkg-a"],
+      ["v2.0.0", "pkg-e"],
+      ["v1.0.0", "pkg-b"],
+      ["v1.0.0", "pkg-c"],
+      ["v1.0.0", "pkg-d"],
+    ]);
+
+    expect(pushed).toEqual(["v1.0.0", "v2.0.0"]);
+    const byTag = new Map(releases.map((r) => [r.tag_name, r.body]));
+    expect([...byTag.keys()].sort()).toEqual(["v1.0.0", "v2.0.0"]);
+    expect(byTag.get("v1.0.0")).toBe(
+      names.map((name) => `## ${name}@1.0.0\n\n${entry(name)}`).join("\n\n"),
+    );
+    // A tag of its own keeps its package's entry as the notes.
+    expect(byTag.get("v2.0.0")).toBe(entry("pkg-e"));
+    expect(result).toMatchObject({
+      released: expect.arrayContaining([
+        ...names.map((name) => ({ name, version: "1.0.0", tag: "v1.0.0" })),
+        { name: "pkg-e", version: "2.0.0", tag: "v2.0.0" },
+      ]),
+    });
+    expectCommentNaming(comments, [
+      ...names.map((name): [string, string] => [name, "v1.0.0"]),
+      ["pkg-e", "v2.0.0"],
+    ]);
+  });
+
+  it("stops before publishing when a package of a shared tag has no entry", async () => {
+    await using fixture = await lockstepFixture();
+    const cwd = fixture.path;
+    await fs.writeFile(
+      path.join(cwd, "packages/pkg-b/CHANGELOG.md"),
+      "# pkg-b\n\n## 0.9.0\n\n- Older\n",
+    );
+
+    // The check covers every package behind v1.0.0, so the default `error`
+    // stops the run before the script reports any tag.
+    await expect(publish(cwd, sharedEvents)).rejects.toThrow(
+      /No changelog entry for the version about to be released: pkg-b@1\.0\.0 \(packages\/pkg-b\/CHANGELOG\.md\)\. Nothing was published/,
+    );
+    expect(mockedGithubMethods.repos.createRelease).not.toHaveBeenCalled();
+  });
+
+  it("releases a shared tag as before when shiprig reports only its first package", async () => {
+    await using fixture = await lockstepFixture();
+    const cwd = fixture.path;
+
+    const { result, pushed, releases, comments } = await publish(cwd, [
+      ["v1.0.0", "pkg-a"],
+    ]);
+
+    expect(pushed).toEqual(["v1.0.0"]);
+    expect(releases).toEqual([
+      expect.objectContaining({ tag_name: "v1.0.0", body: entry("pkg-a") }),
+    ]);
+    expect(result).toMatchObject({
+      publishedPackages: [{ name: "pkg-a", version: "1.0.0" }],
+      released: [{ name: "pkg-a", version: "1.0.0", tag: "v1.0.0" }],
+    });
+    expectCommentNaming(comments, [["pkg-a", "v1.0.0"]]);
+  });
+
+  it.each(["generate", "skip"] as const)(
+    "applies release-notes-fallback: %s to the package of a shared tag with no entry",
+    async (releaseNotesFallback) => {
+      await using fixture = await lockstepFixture();
+      const cwd = fixture.path;
+      await fs.writeFile(
+        path.join(cwd, "packages/pkg-b/CHANGELOG.md"),
+        "# pkg-b\n\n## 0.9.0\n\n- Older\n",
+      );
+
+      const { result, pushed, releases } = await publish(cwd, sharedEvents, {
+        releaseNotesFallback,
+        commentReleasedPrs: false,
+      });
+
+      expect(pushed).toEqual(["v1.0.0"]);
+      expect(releases).toHaveLength(1);
+      const others = ["pkg-c", "pkg-d"]
+        .map((name) => `## ${name}@1.0.0\n\n${entry(name)}`)
+        .join("\n\n");
+      expect(releases[0]).toMatchObject(
+        releaseNotesFallback === "generate"
+          ? {
+              tag_name: "v1.0.0",
+              generate_release_notes: true,
+              body: `## pkg-a@1.0.0\n\n${entry("pkg-a")}\n\n## pkg-b@1.0.0\n\n${others}`,
+            }
+          : {
+              tag_name: "v1.0.0",
+              body: `## pkg-a@1.0.0\n\n${entry("pkg-a")}\n\n${others}`,
+            },
+      );
+      if (releaseNotesFallback === "skip") {
+        expect(releases[0]).not.toHaveProperty("generate_release_notes");
+        expect(core.warning).toHaveBeenCalledWith(
+          "No changelog entry for pkg-b@1.0.0; leaving it out of the v1.0.0 release (release-notes-fallback: skip).",
+        );
+      }
+      // Released either way: only the GitHub release leaves it out.
+      expect(
+        (result as { publishedPackages: unknown[] }).publishedPackages,
+      ).toHaveLength(4);
+    },
+  );
 });
 
 // A stand-in shiprig with one package, whose `tag --dry-run` fails: what the
