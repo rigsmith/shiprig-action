@@ -304,12 +304,12 @@ export async function runPublish({
 
   // The releases come from `shiprig forge-release` on a shiprig that has it,
   // with release-notes-fallback `error` only: it has no fallback for a missing
-  // entry, so `generate` and `skip` keep the action's own per-package releases.
+  // entry, so `generate` and `skip` keep the action's own per-tag releases.
   const forgeReleaseShiprig = createGithubReleases && (await hasForgeRelease());
   const useForgeRelease =
     forgeReleaseShiprig && releaseNotesFallback === "error";
   if (forgeReleaseShiprig && !useForgeRelease) {
-    // Per-package releases can't stand in for a combined one: stop while
+    // The action's per-tag releases can't stand in for a combined one: stop while
     // nothing has gone out.
     const config = await readShiprigConfig(cwd);
     if (config === undefined) {
