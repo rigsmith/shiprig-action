@@ -152,10 +152,12 @@ run fails there too.
 notes GitHub generates from the merged pull requests, and `skip` creates none.
 Either one warns instead of failing. `shiprig forge-release` is used only with
 `error` (the default): with `generate` or `skip` the action keeps creating one
-release per package itself, as above, whatever the shiprig version, and says so
+release per tag itself, as above, whatever the shiprig version, and says so
 in the log. Combined releases need `error`, so `forgeRelease.mode: "combined"`
 with `generate` or `skip` fails before publishing. A package that gets no GitHub
-release isn't named in the "released in" comments.
+release isn't named in the "released in" comments. For a tag several packages
+share, `skip` leaves a package with no entry out of that tag's one release and
+out of its comments; the tag's other packages keep both.
 
 **"Released in" comments.** Once a release's tags are pushed, each pull request
 whose changeset shipped gets one comment naming the package versions it went
