@@ -1,5 +1,12 @@
 # shiprig-action
 
+## 0.8.3
+
+### Patch Changes
+
+- [#55](https://github.com/rigsmith/shiprig-action/pull/55) [`84cbee0`](https://github.com/rigsmith/shiprig-action/commit/84cbee0f74e5eda6cf5e125973713715c0f82dd4) - A tag several packages share (`"tagTemplate": "v${version}"` in a lockstep repo) is pushed once, however many `git-tag` events name it. A shiprig that reports one event per package of a shared tag no longer fails the run after publishing, with each extra push of the same tag refused as "Reference already exists". Every package of the tag still counts as released, in `published-packages`, the job summary and the "released in" comments. When the action creates the GitHub releases itself, a shared tag gets one release, with a `## <name>@<version>` section per package as shiprig's combined release writes them.
+- [#53](https://github.com/rigsmith/shiprig-action/pull/53) [`8d9a093`](https://github.com/rigsmith/shiprig-action/commit/8d9a093aee94e696ccb6a61c2d5a61539497655e) - Packages released in lockstep under one shared tag (`"tagTemplate": "v${version}"`) now get their first release and their changelog check. A `v<version>` tag used to be matched to a package only when exactly one package was at that version, so a shared `v1.0.0` covering several packages matched none of them: `releaseAs` at the version on disk opened no version PR ("Nothing to publish"), and a missing changelog entry went unnoticed before publishing. The tag now covers every package at its version; `<name>@<version>` tags work as before.
+
 ## 0.8.2
 
 ### Patch Changes
