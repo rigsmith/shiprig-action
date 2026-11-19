@@ -1707,6 +1707,34 @@ exit 0
   });
 }
 
+// Packages released in lockstep under one shared tag: `shiprig tag --dry-run`
+// prints `v1.0.0` once for lock-a and lock-b, and `v2.0.0` for lock-c, the
+// one package at that version.
+function sharedTagFixture(extra: Record<string, string> = {}) {
+  return gitdir({
+    ".changeset/config.json": JSON.stringify({ tagTemplate: "v${version}" }),
+    "package.json": JSON.stringify({
+      name: "root",
+      private: true,
+      workspaces: ["packages/*"],
+    }),
+    "package-lock.json": "",
+    "packages/lock-a/package.json": JSON.stringify({
+      name: "lock-a",
+      version: "1.0.0",
+    }),
+    "packages/lock-b/package.json": JSON.stringify({
+      name: "lock-b",
+      version: "1.0.0",
+    }),
+    "packages/lock-c/package.json": JSON.stringify({
+      name: "lock-c",
+      version: "2.0.0",
+    }),
+    ...extra,
+  });
+}
+
 describe("publish checks changelog entries first", () => {
   // Both packages' changelogs, with no entry for the version being released.
   async function withoutEntries(cwd: string) {
@@ -1773,6 +1801,62 @@ describe("publish checks changelog entries first", () => {
       }),
     ).rejects.toThrow("solo@1.0.0 (CHANGELOG.md)");
     await expect(fs.access(path.join(cwd, "published"))).rejects.toThrow();
+  });
+
+  it("names every package behind a shared v<version> tag", async () => {
+    await using fixture = await sharedTagFixture({
+      "packages/lock-a/CHANGELOG.md": "# lock-a\n\n## 0.9.0\n\n- Older\n",
+      "packages/lock-b/CHANGELOG.md": "# lock-b\n\n## 0.9.0\n\n- Older\n",
+      "packages/lock-c/CHANGELOG.md": "# lock-c\n\n## 1.9.0\n\n- Older\n",
+    });
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+
+    const run = runPublish({
+      script: "touch published",
+      github: createGithub(cwd),
+      createGithubReleases: true,
+      pushGitTags: true,
+      cwd,
+    });
+    const message = await run.then(
+      () => "",
+      (err: Error) => err.message,
+    );
+    expect(message).toContain(
+      "lock-a@1.0.0 (packages/lock-a/CHANGELOG.md), lock-b@1.0.0 (packages/lock-b/CHANGELOG.md)",
+    );
+    // The one package at its tag's version is still checked, as before.
+    expect(message).toContain("lock-c@2.0.0 (packages/lock-c/CHANGELOG.md)");
+    await expect(fs.access(path.join(cwd, "published"))).rejects.toThrow();
+  });
+
+  it("names only the package missing its entry behind a shared v<version> tag", async () => {
+    await using fixture = await sharedTagFixture({
+      "packages/lock-a/CHANGELOG.md": "# lock-a\n\n## 1.0.0\n\n- First\n",
+      "packages/lock-b/CHANGELOG.md": "# lock-b\n\n## 0.9.0\n\n- Older\n",
+      "packages/lock-c/CHANGELOG.md": "# lock-c\n\n## 2.0.0\n\n- First\n",
+    });
+    const cwd = fixture.path;
+    await updateGithubContext(cwd);
+    vi.stubEnv("RUNNER_TEMP", cwd);
+
+    // Only lock-b is missing its entry: the shared tag's other package and
+    // lock-c aren't named.
+    const message = await runPublish({
+      script: "touch published",
+      github: createGithub(cwd),
+      createGithubReleases: true,
+      pushGitTags: true,
+      cwd,
+    }).then(
+      () => "",
+      (err: Error) => err.message,
+    );
+    expect(message).toMatch(
+      /No changelog entry for the version about to be released: lock-b@1\.0\.0 \(packages\/lock-b\/CHANGELOG\.md\)\. Nothing was published/,
+    );
   });
 
   it("fails before the publish script runs when it can't tell what would be tagged", async () => {
@@ -2520,6 +2604,29 @@ describe("first release at the version on disk", () => {
     } finally {
       await fs.chmod(file, 0o644);
     }
+  });
+
+  it("is every package behind a shared v<version> tag", async () => {
+    // Avalloy's four packages at 1.0.0 from one Directory.Build.props: one
+    // `v1.0.0` tag for all of them, none of them released yet.
+    await using fixture = await sharedTagFixture();
+    const releaseAs = {
+      "lock-a": "1.0.0",
+      "lock-b": "1.0.0",
+      "lock-c": "2.0.0",
+    };
+    expect(await firstReleases(fixture.path, releaseAs)).toEqual([
+      "lock-a",
+      "lock-b",
+      "lock-c",
+    ]);
+
+    // Once the shared tag is out, neither of its packages is one.
+    await exec("git", ["tag", "v1.0.0"], {
+      nodeOptions: { cwd: fixture.path },
+      throwOnError: true,
+    });
+    expect(await firstReleases(fixture.path, releaseAs)).toEqual(["lock-c"]);
   });
 
   it("isn't one for another version, or in pre mode", async () => {

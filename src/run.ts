@@ -105,8 +105,10 @@ const createRelease = async (
 /**
  * The packages a publish would tag, each with its tag, from `shiprig tag
  * --dry-run`. A tag is matched to its package as shiprig names it,
- * `<name>@<version>`, or `v<version>` for the one package at that version (a
- * single-package repository). Undefined when shiprig couldn't say.
+ * `<name>@<version>`, or `v<version>` for every package at that version: a
+ * single-package repository, or packages released in lockstep under one
+ * shared tag (`"tagTemplate": "v${version}"`), which shiprig prints once for
+ * all of them. Undefined when shiprig couldn't say.
  */
 async function packagesToTag(
   cwd: string,
@@ -120,7 +122,7 @@ async function packagesToTag(
     const atVersion = packages.filter(
       (p) => !p.ignored && tag === `v${p.version}`,
     );
-    if (atVersion.length === 1) return [{ pkg: atVersion[0], tag }];
+    if (atVersion.length > 0) return atVersion.map((pkg) => ({ pkg, tag }));
     core.debug(`No package matches the tag ${tag}; not checking it.`);
     return [];
   });
